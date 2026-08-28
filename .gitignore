@@ -1,0 +1,11 @@
+# 编译产物
+*.o
+*.exe
+
+# 构建/测试临时文件
+build.log
+_*.txt
+test_play*.txt
+
+# 玩家存档
+data/saves/
