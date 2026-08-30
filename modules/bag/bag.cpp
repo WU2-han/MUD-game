@@ -51,11 +51,15 @@ static void cmd_buy(Player* player, const std::string& args) {
         Item* tmpl = item_get(si.item_id);
         if (!tmpl) return;
 
-        if (player_spend_gold(player, si.price)) {
-            Item it = *tmpl;
-            it.quantity = 1;
-            player_add_item(player, it);
-        }
+    if (player_spend_gold(player, si.price)) {
+    Item it = *tmpl;
+    it.quantity = 1;
+
+    if (!player_add_item(player, it)) {
+        player_add_gold(player, si.price);
+        printf("购买失败，已退还 %d 灵石。\n", si.price);
+    }
+}
         return;
     }
 
@@ -63,11 +67,15 @@ static void cmd_buy(Player* player, const std::string& args) {
     for (auto& si : g_shop_items) {
         Item* tmpl = item_get(si.item_id);
         if (tmpl && tmpl->name.find(args) != std::string::npos) {
-            if (player_spend_gold(player, si.price)) {
-                Item it = *tmpl;
-                it.quantity = 1;
-                player_add_item(player, it);
-            }
+        if (player_spend_gold(player, si.price)) {
+    Item it = *tmpl;
+    it.quantity = 1;
+
+    if (!player_add_item(player, it)) {
+        player_add_gold(player, si.price);
+        printf("购买失败，已退还 %d 灵石。\n", si.price);
+    }
+}
             return;
         }
     }
@@ -93,11 +101,22 @@ static void cmd_sell(Player* player, const std::string& args) {
         return;
     }
 
-    auto& it = player->inventory[idx - 1];
-    int sell_price = it.value / 2; // 半价回收
-    player_add_gold(player, sell_price);
-    printf("你出售了 %s，获得 %d 灵石。\n", it.name.c_str(), sell_price);
-    player_remove_item(player, idx - 1);
+   auto& it = player->inventory[idx - 1];
+
+int sell_price = it.value / 2; // 半价回收
+
+player_add_gold(player, sell_price);
+
+printf("你出售了 %s x1，获得 %d 灵石。\n",
+       it.name.c_str(), sell_price);
+
+// 可堆叠并且数量大于1，只卖掉一个
+if (it.stackable && it.quantity > 1) {
+    it.quantity--;
+}
+else {
+    player->inventory.erase(player->inventory.begin() + (idx - 1));
+}
 }
 
 static void cmd_shop(Player* player, const std::string& args) {
@@ -135,16 +154,32 @@ static std::vector<Command> bag_commands = {
 static void bag_init() {
     printf("[模块D] 背包商店系统初始化\n");
 
-    // 初始化商店道具
+    // 藏宝阁商品列表
     g_shop_items = {
-        {201, 50},   // 疗伤丹
-        {202, 40},   // 回灵丹
-        {203, 200},  // 聚气丹
-        {204, 100},  // 铁剑
-        {205, 80},   // 布甲
-        {206, 300},  // 筑基功法
-        {207, 30},   // 灵草
-        {210, 500},  // 筑基丹
+
+        // ===== 丹药 =====
+        {301, 30},    // 下品淬体丹
+        {302, 25},    // 下品聚气丹
+        {303, 25},    // 下品养神丹
+        {304, 40},    // 下品启悟丹
+        {305, 50},    // 下品培元丹
+        {306, 35},    // 下品精工丹
+
+
+        // ===== 法器 =====
+        {401, 800},   // 青锋灵剑
+        {402, 1000},  // 玄铁裂爪
+        {403, 2200},  // 流风环刃
+        {404, 2600},  // 焚火玉牌
+        {405, 6000},  // 寒魄断川刀
+        {406, 18000}, // 曜日镇神戈
+
+
+        // ===== 功法秘籍 =====
+        {501, 1200}, // 《丹道真解》
+        {502, 1200}, // 《器铸玄经》
+        {503, 1200}, // 《符箓通典》
+        {504, 1200}  // 《御兽灵诀》
     };
 }
 

@@ -188,7 +188,7 @@ bool player_remove_item(Player* player, int slot) {
 bool player_use_item(Player* player, int slot) {
     if (slot < 0 || slot >= static_cast<int>(player->inventory.size())) return false;
 
-    Item& it = player->inventory[slot];
+    Item it = player->inventory[slot];
 
     switch (it.type) {
     case ItemType::PILL:
@@ -211,11 +211,12 @@ bool player_use_item(Player* player, int slot) {
     event_emit(EventType::PLAYER_USE_ITEM, player, nullptr);
 
     // 消耗道具
-    if (it.stackable && it.quantity > 1) {
+     if (it.stackable && it.quantity > 1) {
         it.quantity--;
     } else {
-        player_remove_item(player, slot);
+        player->inventory.erase(player->inventory.begin() + slot);
     }
+
     return true;
 }
 

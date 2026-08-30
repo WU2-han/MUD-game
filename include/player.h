@@ -30,7 +30,7 @@ bool player_try_breakthrough(Player *player);
 bool player_move_to(Player *player, int room_id);
 
 /* 背包操作 */
-bool player_add_item(Player *player, Item item);
+bool player_add_item(Player *player, const Item& item);
 bool player_remove_item(Player *player, int slot);
 bool player_use_item(Player *player, int slot);
 Item *player_find_item(Player *player, int item_id);
