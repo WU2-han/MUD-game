@@ -28,6 +28,57 @@ static void cmd_help(Player* player, const std::string& args) {
     cmd_show_all(player);
 }
 
+// ===== UTF-8 显示宽度辅助（中文等全角按 2 列，ASCII 按 1 列）=====
+
+// 返回从首字节 c 开始的 UTF-8 字符占用的字节数
+static int utf8_char_bytes(unsigned char c) {
+    if (c < 0x80) return 1;
+    if ((c & 0xE0) == 0xC0) return 2;
+    if ((c & 0xF0) == 0xE0) return 3;
+    if ((c & 0xF8) == 0xF0) return 4;
+    return 1;
+}
+
+// 计算字符串显示宽度（多字节字符按 2 列）
+static int display_width(const std::string& s) {
+    int w = 0;
+    for (size_t i = 0; i < s.size(); ) {
+        int n = utf8_char_bytes((unsigned char)s[i]);
+        w += (n == 1) ? 1 : 2;
+        i += n;
+    }
+    return w;
+}
+
+// 按显示宽度把字符串切成若干行（每行 <= maxw 列，绝不切断多字节字符）
+static std::vector<std::string> wrap_utf8(const std::string& s, int maxw) {
+    std::vector<std::string> lines;
+    std::string cur;
+    int curw = 0;
+    for (size_t i = 0; i < s.size(); ) {
+        int n = utf8_char_bytes((unsigned char)s[i]);
+        int w = (n == 1) ? 1 : 2;
+        if (curw + w > maxw && !cur.empty()) {
+            lines.push_back(cur);
+            cur.clear();
+            curw = 0;
+        }
+        cur += s.substr(i, n);
+        curw += w;
+        i += n;
+    }
+    if (!cur.empty()) lines.push_back(cur);
+    return lines;
+}
+
+// 打印一行，右侧按显示宽度补齐空格，保证边框对齐
+static void box_line(const std::string& text, int width) {
+    int w = display_width(text);
+    printf("│ %s", text.c_str());
+    for (int k = w; k < width; k++) printf(" ");
+    printf(" │\n");
+}
+
 static void cmd_look(Player* player, const std::string& args) {
     (void)args;
     Room* room = room_get(player->current_room_id);
@@ -37,17 +88,12 @@ static void cmd_look(Player* player, const std::string& args) {
     }
 
     printf("\n┌──────────────────────────────────┐\n");
-    printf("│ %-32s │\n", room->name.c_str());
+    box_line(room->name, 32);
     printf("├──────────────────────────────────┤\n");
 
-    // 描述自动换行
-    std::string desc = room->desc;
-    size_t pos = 0;
-    while (pos < desc.size()) {
-        size_t len = std::min(desc.size() - pos, size_t(32));
-        printf("│ %-32s │\n", desc.substr(pos, len).c_str());
-        pos += len;
-    }
+    // 描述按显示宽度自动换行（中文不截断）
+    std::vector<std::string> lines = wrap_utf8(room->desc, 32);
+    for (const auto& ln : lines) box_line(ln, 32);
 
     printf("├──────────────────────────────────┤\n");
 
@@ -433,136 +479,9 @@ static void init_game_data() {
     item_create(213, "金丹功法", "记载了金丹大道的高深秘籍",
                 ItemType::MANUAL, 1000, 0, 0, 0, 0, 2000, false);
 
-    // ---- 初始化NPC模板 ----
-    npc_create(101, "野狼", "一只凶猛的野狼，眼中泛着绿光",
-               NPCType::MONSTER, RealmLevel::MORTAL,
-               80, 15, 3, 30, 20, 207);
-    npc_create(102, "黑熊", "一头体型庞大的黑熊",
-               NPCType::MONSTER, RealmLevel::MORTAL,
-               150, 20, 8, 50, 50, 205);
-    npc_create(103, "妖兽虎", "一只修炼成精的虎妖，已有炼气期修为",
-               NPCType::MONSTER, RealmLevel::QI_REFINE,
-               300, 40, 15, 150, 100, 208);
-    npc_create(104, "坊市商人", "一位精明的修仙坊市商人，贩卖各种修炼物资",
-               NPCType::MERCHANT, RealmLevel::FOUNDATION,
-               500, 30, 20, 0, 0, -1);
-    npc_create(105, "宗门长老", "一位仙风道骨的宗门长老，负责招收弟子",
-               NPCType::ELDER, RealmLevel::GOLDEN_CORE,
-               2000, 100, 50, 0, 0, -1);
-    npc_create(106, "秘境守卫", "试炼秘境入口的守护者，实力深不可测",
-               NPCType::MONSTER, RealmLevel::FOUNDATION,
-               800, 60, 30, 300, 200, 211);
-    npc_create(107, "灵蛇", "一条通体碧绿的毒蛇，剧毒无比",
-               NPCType::MONSTER, RealmLevel::QI_REFINE,
-               200, 35, 10, 100, 80, 207);
-    npc_create(108, "炼丹童子", "宗门炼丹房的小童，可以帮忙炼制丹药",
-               NPCType::MERCHANT, RealmLevel::QI_REFINE,
-               200, 20, 10, 0, 0, -1);
-
-    // ---- 创建房间 ----
-    // 1. 新手村 - 出生点
-    room_create(1, "新手村", "一个宁静的小村庄，炊烟袅袅。这里是修仙之路的起点，村口立着一块石碑，上面刻着'仙缘起处'四个大字。");
-    // 2. 村外树林
-    room_create(2, "村外树林", "村外一片茂密的树林，阳光透过树叶洒下斑驳的光影。偶尔能听到野兽的低吼声，地上散落着一些灵草。");
-    // 3. 修仙坊市
-    room_create(3, "修仙坊市", "修仙者们交易物品的集市，热闹非凡。街道两旁摆满了各种摊位，丹药、法器、灵材应有尽有。");
-    // 4. 灵药山
-    room_create(4, "灵药山", "一座云雾缭绕的灵山，山上长满了各种珍稀灵药。空气中弥漫着浓郁的灵气，是修炼的绝佳之地。");
-    // 5. 妖兽森林
-    room_create(5, "妖兽森林", "一片阴森的古老森林，妖兽横行。只有实力足够强大的修仙者才敢深入此地。");
-    // 6. 宗门大殿
-    room_create(6, "宗门大殿", "太虚宗的大殿，气势恢宏。殿内供奉着历代祖师牌位，宗门长老在此主持事务。");
-    // 7. 试炼秘境
-    room_create(7, "试炼秘境", "一处古老的试炼秘境，据说其中藏有上古传承。秘境内机关重重，危险与机遇并存。");
-    // 8. 藏经阁
-    room_create(8, "藏经阁", "宗门收藏功法秘籍的宝库。书架林立，各种修炼法门应有尽有，但需要相应的境界才能阅览。");
-    // 9. 炼丹房
-    room_create(9, "炼丹房", "宗门炼丹之地，丹炉中火焰熊熊。空气中弥漫着各种丹药的香气，炼丹童子正在忙碌。");
-    // 10. 御兽园
-    room_create(10, "御兽园", "宗门饲养灵兽的园子，各种奇珍异兽在此栖息。驯服一只灵兽可以大大增强战力。");
-    // 11. 渡劫台
-    room_create(11, "渡劫台", "宗门后山的渡劫台，专门为突破渡劫期的弟子准备。台上雷电交加，气势惊人。");
-    // 12. 后山山洞
-    room_create(12, "后山山洞", "一个隐蔽的山洞，洞壁上镶嵌着发光的灵石。传闻有前辈高人在此留下了传承。");
-
-    // ---- 设置出口 ----
-    // 新手村 ↔ 村外树林
-    room_set_exit(1, Direction::NORTH, 2);
-    room_set_exit(2, Direction::SOUTH, 1);
-    // 新手村 ↔ 修仙坊市
-    room_set_exit(1, Direction::EAST, 3);
-    room_set_exit(3, Direction::WEST, 1);
-    // 村外树林 ↔ 灵药山
-    room_set_exit(2, Direction::EAST, 4);
-    room_set_exit(4, Direction::WEST, 2);
-    // 灵药山 ↔ 妖兽森林
-    room_set_exit(4, Direction::NORTH, 5);
-    room_set_exit(5, Direction::SOUTH, 4);
-    // 灵药山 ↔ 宗门大殿
-    room_set_exit(4, Direction::UP, 6);
-    room_set_exit(6, Direction::DOWN, 4);
-    // 宗门大殿 ↔ 藏经阁
-    room_set_exit(6, Direction::EAST, 8);
-    room_set_exit(8, Direction::WEST, 6);
-    // 宗门大殿 ↔ 炼丹房
-    room_set_exit(6, Direction::WEST, 9);
-    room_set_exit(9, Direction::EAST, 6);
-    // 宗门大殿 ↔ 御兽园
-    room_set_exit(6, Direction::NORTH, 10);
-    room_set_exit(10, Direction::SOUTH, 6);
-    // 宗门大殿 → 渡劫台
-    room_set_exit(6, Direction::UP, 11);
-    room_set_exit(11, Direction::DOWN, 6);
-    // 妖兽森林 → 试炼秘境
-    room_set_exit(5, Direction::EAST, 7);
-    room_set_exit(7, Direction::WEST, 5);
-    // 后山山洞（从妖兽森林进入）
-    room_set_exit(5, Direction::NORTH, 12);
-    room_set_exit(12, Direction::SOUTH, 5);
-
-    // ---- 设置境界锁 ----
-    room_lock_exit(1, Direction::EAST, false, RealmLevel::MORTAL);  // 坊市无锁
-    room_lock_exit(4, Direction::NORTH, true, RealmLevel::QI_REFINE); // 妖兽森林需炼气期
-    room_lock_exit(4, Direction::UP, true, RealmLevel::QI_REFINE);    // 宗门需炼气期
-    room_lock_exit(5, Direction::EAST, true, RealmLevel::FOUNDATION); // 秘境需筑基期
-    room_lock_exit(5, Direction::NORTH, true, RealmLevel::FOUNDATION);// 山洞需筑基期
-    room_lock_exit(6, Direction::UP, true, RealmLevel::TRIBULATION);  // 渡劫台需渡劫期
-
-    // ---- 设置房间属性 ----
-    // 非安全区（可战斗）
-    Room* r2 = room_get(2); if (r2) r2->is_safe_zone = false;
-    Room* r5 = room_get(5); if (r5) r5->is_safe_zone = false;
-    Room* r7 = room_get(7); if (r7) r7->is_safe_zone = false;
-    Room* r12 = room_get(12); if (r12) r12->is_safe_zone = false;
-
-    // 设置最低境界
-    Room* r6 = room_get(6); if (r6) r6->min_realm = RealmLevel::QI_REFINE;
-    Room* r7r = room_get(7); if (r7r) r7r->min_realm = RealmLevel::FOUNDATION;
-    Room* r11 = room_get(11); if (r11) r11->min_realm = RealmLevel::TRIBULATION;
-
-    // ---- 房间放置NPC ----
-    room_add_npc(2, 101);  // 树林: 野狼
-    room_add_npc(4, 107);  // 灵药山: 灵蛇
-    room_add_npc(5, 102);  // 妖兽森林: 黑熊
-    room_add_npc(5, 103);  // 妖兽森林: 妖兽虎
-    room_add_npc(7, 106);  // 秘境: 秘境守卫
-    room_add_npc(3, 104);  // 坊市: 商人
-    room_add_npc(6, 105);  // 宗门: 长老
-    room_add_npc(9, 108);  // 炼丹房: 炼丹童子
-    room_add_npc(12, 103); // 山洞: 妖兽虎
-
-    // ---- 房间放置道具 ----
-    room_add_item(2, 207);  // 树林: 灵草
-    room_add_item(2, 207);  // 树林: 灵草
-    room_add_item(4, 207);  // 灵药山: 灵草
-    room_add_item(4, 203);  // 灵药山: 聚气丹
-    room_add_item(5, 208);  // 妖兽森林: 妖丹
-    room_add_item(7, 211);  // 秘境: 灵剑
-    room_add_item(7, 212);  // 秘境: 灵甲
-    room_add_item(12, 213); // 山洞: 金丹功法
-    room_add_item(12, 210); // 山洞: 筑基丹
-    room_add_item(1, 201);  // 新手村: 疗伤丹（新手福利）
-    room_add_item(1, 202);  // 新手村: 回灵丹（新手福利）
+    // 注：NPC 模板与房间/出口/境界锁/NPC摆放/机缘触发，已全部迁移到
+    // modules/world/world.cpp（成员C 的世界地图模块）中实现，
+    // 本处只保留道具模板（成员D 负责，后续按《游戏基础设定》丹药/法器表完善）。
 
     printf("[数据] 游戏世界初始化完成\n");
 }
