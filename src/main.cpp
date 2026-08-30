@@ -278,10 +278,26 @@ static void cmd_drop(Player* player, const std::string& args) {
         return;
     }
     Room* room = room_get(player->current_room_id);
-    if (room) {
-        room_add_item(player->current_room_id, player->inventory[idx - 1].id);
-    }
-    player_remove_item(player, idx - 1);
+
+if (!room) {
+    printf("当前房间不存在，无法丢弃物品。\n");
+    return;
+}
+
+Item& it = player->inventory[idx - 1];
+
+// 房间增加一个该物品
+room_add_item(player->current_room_id, it.id);
+
+printf("你丢弃了 %s x1。\n", it.name.c_str());
+
+// 如果是可堆叠物品且数量大于1，只减少一个
+if (it.stackable && it.quantity > 1) {
+    it.quantity--;
+}
+else {
+    player->inventory.erase(player->inventory.begin() + (idx - 1));
+}
 }
 
 static void cmd_use(Player* player, const std::string& args) {
@@ -404,39 +420,248 @@ static void cmd_load(Player** player_ptr, const std::string& args) {
 
 // ===== 初始化世界数据 =====
 
+// ---- 初始化道具模板 ----
+
+
+// ===== 丹药 =====
 static void init_game_data() {
-    // ---- 初始化道具模板 ----
-    item_create(201, "疗伤丹", "恢复100点生命值的一品丹药",
-                ItemType::PILL, 50, 100, 0, 0, 0, 0, true);
-    item_create(202, "回灵丹", "恢复50点灵力的丹药",
-                ItemType::PILL, 40, 0, 50, 0, 0, 0, true);
-    item_create(203, "聚气丹", "服用后获得大量修为",
-                ItemType::PILL, 200, 0, 0, 0, 0, 200, true);
-    item_create(204, "铁剑", "一把普通的铁剑，略有锋芒",
-                ItemType::WEAPON, 100, 0, 0, 15, 0, 0, false);
-    item_create(205, "布甲", "粗布缝制的护甲",
-                ItemType::ARMOR, 80, 20, 0, 0, 10, 0, false);
-    item_create(206, "筑基功法", "记载了筑基期修炼法门的秘籍",
-                ItemType::MANUAL, 300, 0, 0, 0, 0, 500, false);
-    item_create(207, "灵草", "一株散发着灵气的药草",
-                ItemType::MATERIAL, 30, 0, 0, 0, 0, 0, true);
-    item_create(208, "妖丹", "妖兽体内凝结的精华",
-                ItemType::MATERIAL, 100, 0, 0, 0, 0, 50, true);
-    item_create(209, "灵石袋", "装有一些灵石的小袋子",
-                ItemType::MISC, 500, 0, 0, 0, 0, 0, false);
-    item_create(210, "筑基丹", "大幅提升突破筑基期成功率的丹药",
-                ItemType::PILL, 500, 200, 100, 0, 0, 1000, false);
-    item_create(211, "灵剑", "蕴含灵力的宝剑",
-                ItemType::WEAPON, 500, 0, 0, 30, 0, 0, false);
-    item_create(212, "灵甲", "以灵力编织的护甲",
-                ItemType::ARMOR, 400, 50, 20, 0, 20, 0, false);
-    item_create(213, "金丹功法", "记载了金丹大道的高深秘籍",
-                ItemType::MANUAL, 1000, 0, 0, 0, 0, 2000, false);
+
+// 淬体丹
+item_create(
+301,
+"下品淬体丹",
+"提升肉身强度的丹药",
+ItemType::PILL,
+30,
+100,
+0,
+0,
+0,
+0,
+true);
+
+
+// 聚气丹
+item_create(
+302,
+"下品聚气丹",
+"恢复修士灵力",
+ItemType::PILL,
+25,
+0,
+80,
+0,
+0,
+0,
+true);
+
+
+// 养神丹
+item_create(
+303,
+"下品养神丹",
+"恢复精神状态",
+ItemType::PILL,
+25,
+50,
+50,
+0,
+0,
+0,
+true);
+
+
+// 培元丹
+item_create(
+304,
+"下品培元丹",
+"增加修为的丹药",
+ItemType::PILL,
+50,
+0,
+0,
+0,
+0,
+300,
+true);
+
+
+// 启悟丹
+item_create(
+305,
+"下品启悟丹",
+"提升修炼感悟",
+ItemType::PILL,
+40,
+0,
+0,
+0,
+0,
+200,
+true);
+
+
+// 精工丹
+item_create(
+306,
+"下品精工丹",
+"提升技能熟练度",
+ItemType::PILL,
+35,
+0,
+0,
+0,
+0,
+100,
+true);
+
+
+
+// ===== 法器 =====
+
+item_create(
+401,
+"青锋灵剑",
+"黄阶下品法器，攻击+22",
+ItemType::WEAPON,
+800,
+0,
+0,
+22,
+0,
+0,
+false);
+
+
+item_create(
+402,
+"玄铁裂爪",
+"黄阶中品法器，攻击+28",
+ItemType::WEAPON,
+1000,
+0,
+0,
+28,
+0,
+0,
+false);
+
+
+item_create(
+403,
+"流风环刃",
+"玄阶下品法器，攻击+48",
+ItemType::WEAPON,
+2200,
+0,
+0,
+48,
+0,
+0,
+false);
+
+item_create(
+404,
+"焚火玉牌",
+"黄阶上品法器，攻击+60",
+ItemType::WEAPON,
+2600,
+0,
+0,
+60,
+0,
+0,
+false);
+
+
+item_create(
+405,
+"寒魄断川刀",
+"玄阶中品法器，攻击+90",
+ItemType::WEAPON,
+6000,
+0,
+0,
+90,
+0,
+0,
+false);
+
+
+item_create(
+406,
+"曜日镇神戈",
+"地阶下品法器，攻击+150",
+ItemType::WEAPON,
+18000,
+0,
+0,
+150,
+0,
+0,
+false);
+
+// ===== 功法 =====
+
+item_create(
+501,
+"《丹道真解》",
+"记载炼丹基础知识",
+ItemType::MANUAL,
+1200,
+0,
+0,
+0,
+0,
+500,
+false);
+
+
+item_create(
+502,
+"《器铸玄经》",
+"记载炼器之法",
+ItemType::MANUAL,
+1200,
+0,
+0,
+0,
+0,
+500,
+false);
+
+
+item_create(
+503,
+"《符箓通典》",
+"记载符箓制作方法",
+ItemType::MANUAL,
+1200,
+0,
+0,
+0,
+0,
+500,
+false);
+
+
+item_create(
+504,
+"《御兽灵诀》",
+"记载御兽秘术",
+ItemType::MANUAL,
+1200,
+0,
+0,
+0,
+0,
+500,
+false);
 
     // ---- 初始化NPC模板 ----
-    npc_create(101, "野狼", "一只凶猛的野狼，眼中泛着绿光",
-               NPCType::MONSTER, RealmLevel::MORTAL,
-               80, 15, 3, 30, 20, 207);
+   npc_create(101, "野狼", "一只凶猛的野狼，眼中泛着绿光",
+           NPCType::MONSTER, RealmLevel::MORTAL,
+           50, 8, 2, 30, 20, 207);
     npc_create(102, "黑熊", "一头体型庞大的黑熊",
                NPCType::MONSTER, RealmLevel::MORTAL,
                150, 20, 8, 50, 50, 205);
@@ -530,6 +755,7 @@ static void init_game_data() {
 
     // ---- 设置房间属性 ----
     // 非安全区（可战斗）
+    Room* r1 = room_get(1); if (r1) r1->is_safe_zone = false;
     Room* r2 = room_get(2); if (r2) r2->is_safe_zone = false;
     Room* r5 = room_get(5); if (r5) r5->is_safe_zone = false;
     Room* r7 = room_get(7); if (r7) r7->is_safe_zone = false;
@@ -541,6 +767,8 @@ static void init_game_data() {
     Room* r11 = room_get(11); if (r11) r11->min_realm = RealmLevel::TRIBULATION;
 
     // ---- 房间放置NPC ----
+    room_add_npc(1, 101);  // 新手村: 野狼
+    room_add_npc(2, 101);  // 树林: 野狼
     room_add_npc(2, 101);  // 树林: 野狼
     room_add_npc(4, 107);  // 灵药山: 灵蛇
     room_add_npc(5, 102);  // 妖兽森林: 黑熊
@@ -561,8 +789,8 @@ static void init_game_data() {
     room_add_item(7, 212);  // 秘境: 灵甲
     room_add_item(12, 213); // 山洞: 金丹功法
     room_add_item(12, 210); // 山洞: 筑基丹
-    room_add_item(1, 201);  // 新手村: 疗伤丹（新手福利）
-    room_add_item(1, 202);  // 新手村: 回灵丹（新手福利）
+   room_add_item(1, 301);  // 新手村：下品淬体丹
+room_add_item(1, 302);  // 新手村：下品聚气丹
 
     printf("[数据] 游戏世界初始化完成\n");
 }
