@@ -81,3 +81,31 @@ Item* item_create(int id, const std::string& name, const std::string& desc,
     g_item_templates[id] = item;
     return &g_item_templates[id];
 }
+
+// 高级创建：支持 V2.0 丹药品阶
+Item* item_create_adv(int id, const std::string& name, const std::string& desc,
+                      ItemType type, int value, PillGrade grade, bool stackable) {
+    Item* it = item_create(id, name, desc, type, value, 0, 0, 0, 0, 0, stackable);
+    it->grade = grade;
+    // 品阶值差异（可叠加在value上由商店定价）
+    return it;
+}
+
+// 配置道具的高级加成字段
+void item_configure(Item* it, int hp_bonus, int mp_bonus, int atk_bonus, int def_bonus,
+                    int exp_bonus, int con_bonus, int spi_bonus, int wu_bonus,
+                    int spd_bonus, int stam_bonus, int prof_bonus, bool is_artifact) {
+    if (!it) return;
+    it->hp_bonus = hp_bonus;
+    it->mp_bonus = mp_bonus;
+    it->atk_bonus = atk_bonus;
+    it->def_bonus = def_bonus;
+    it->exp_bonus = exp_bonus;
+    it->con_bonus = con_bonus;
+    it->spi_bonus = spi_bonus;
+    it->wu_bonus = wu_bonus;
+    it->spd_bonus = spd_bonus;
+    it->stam_bonus = stam_bonus;
+    it->prof_bonus = prof_bonus;
+    it->is_artifact = is_artifact;
+}

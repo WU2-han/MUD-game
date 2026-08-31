@@ -36,9 +36,9 @@ static void cmd_buy(Player* player, const std::string& args) {
         return;
     }
 
-    // 检查是否在坊市
-    if (player->current_room_id != 3) {
-        printf("你不在坊市，无法购买物品。请前往修仙坊市。\n");
+    // 检查是否在藏宝阁
+    if (player->current_room_id != 4) {
+        printf("你不在藏宝阁，无法购买物品。请前往藏宝阁找钱掌柜。\n");
         return;
     }
 
@@ -88,8 +88,8 @@ static void cmd_sell(Player* player, const std::string& args) {
         return;
     }
 
-    if (player->current_room_id != 3) {
-        printf("你不在坊市，无法出售物品。请前往修仙坊市。\n");
+    if (player->current_room_id != 4) {
+        printf("你不在藏宝阁，无法出售物品。请前往藏宝阁找钱掌柜。\n");
         return;
     }
 
@@ -103,7 +103,8 @@ static void cmd_sell(Player* player, const std::string& args) {
 
    auto& it = player->inventory[idx - 1];
 
-int sell_price = it.value / 2; // 半价回收
+// 药渣按策划固定 10 灵石/个回收，其余半价
+int sell_price = (it.id == 227 || it.id == 229) ? 10 : (it.value / 2);
 
 player_add_gold(player, sell_price);
 
@@ -119,27 +120,70 @@ else {
 }
 }
 
+// ---- 丹房合成：累积 10 个药渣合成 1 瓶止血散（丹房 / 百艺阁）----
+static int count_item(const Player* p, int item_id) {
+    int n = 0;
+    for (const auto& it : p->inventory) if (it.id == item_id) n += it.quantity;
+    return n;
+}
+static void remove_item_amount(Player* p, int item_id, int amount) {
+    for (size_t i = 0; i < p->inventory.size() && amount > 0;) {
+        auto& it = p->inventory[i];
+        if (it.id == item_id) {
+            int take = std::min(it.quantity, amount);
+            it.quantity -= take;
+            amount -= take;
+            if (it.quantity <= 0)
+                p->inventory.erase(p->inventory.begin() + i);
+            else
+                i++;
+        } else i++;
+    }
+}
+static void cmd_combine(Player* player, const std::string& args) {
+    (void)args;
+    if (player->current_room_id != 6) {   // 6 = 百艺阁（丹房）
+        printf("需在百艺阁丹房开炉合成止血散。\n");
+        return;
+    }
+    const int cost = 10;
+    if (count_item(player, 227) < cost) {
+        printf("药渣不足（需 %d 个，当前 %d 个）。炸炉产出或击杀妖兽可得药渣。\n",
+               cost, count_item(player, 227));
+        return;
+    }
+    remove_item_amount(player, 227, cost);
+    Item* tmpl = item_get(228);
+    if (tmpl) {
+        Item it = *tmpl;
+        it.quantity = 1;
+        player_add_item(player, it);
+    }
+    printf("你以 10 个药渣合成了 1 瓶【止血散】（恢复100气血）。\n");
+}
+
 static void cmd_shop(Player* player, const std::string& args) {
     (void)args;
-    if (player->current_room_id != 3) {
-        printf("你不在坊市，附近没有商店。请前往修仙坊市。\n");
+    if (player->current_room_id != 4) {
+        printf("你不在藏宝阁，附近没有商店。请前往藏宝阁找钱掌柜。\n");
         return;
     }
 
-    printf("\n╔══════════ 坊市商店 ══════════╗\n");
+    printf("\n╔══════════ 藏宝阁商店 ══════════╗\n");
     printf("║ 你的灵石: %-18d ║\n", player->gold);
-    printf("╠══════════════════════════════╣\n");
-    printf("║ 编号  物品         价格     ║\n");
+    printf("╠════════════════════════════════╣\n");
+    printf("║ 编号  物品             价格   ║\n");
     for (size_t i = 0; i < g_shop_items.size(); i++) {
         auto& si = g_shop_items[i];
         Item* tmpl = item_get(si.item_id);
         if (tmpl) {
-            printf("║ [%d]  %-12s %-8d ║\n",
+            printf("║ [%d]  %-14s %-8d ║\n",
                    (int)(i + 1), tmpl->name.c_str(), si.price);
         }
     }
-    printf("╚══════════════════════════════╝\n");
-    printf("使用 buy <编号> 购买，sell <背包编号> 出售\n\n");
+    printf("╚════════════════════════════════╝\n");
+    printf("使用 buy <编号> 购买，sell <背包编号> 出售\n");
+    printf("（药渣可按10灵石/个出售给钱掌柜）\n\n");
 }
 
 // ---- 模块命令列表 ----
@@ -147,6 +191,7 @@ static std::vector<Command> bag_commands = {
     {"buy",  {},               "购买物品 (buy <编号/名称>)", cmd_buy},
     {"sell", {},               "出售物品 (sell <背包编号>)", cmd_sell},
     {"shop", {"store", "list"},"查看商店",                  cmd_shop},
+    {"combine", {"hecheng"},   "丹房合成 (10药渣→止血散)",  cmd_combine},
 };
 
 // ---- 模块初始化/更新/清理 ----
@@ -154,19 +199,36 @@ static std::vector<Command> bag_commands = {
 static void bag_init() {
     printf("[模块D] 背包商店系统初始化\n");
 
-    // 藏宝阁商品列表
+    // 藏宝阁商品列表（对齐 V2.0 丹药效果价格明细 & 法器售价表）
     g_shop_items = {
 
-        // ===== 丹药 =====
+        // ===== 丹药（下/中/上/极品）=====
         {301, 30},    // 下品淬体丹
-        {302, 25},    // 下品聚气丹
-        {303, 25},    // 下品养神丹
-        {304, 40},    // 下品启悟丹
-        {305, 50},    // 下品培元丹
-        {306, 35},    // 下品精工丹
+        {302, 60},    // 中品淬体丹
+        {303, 120},   // 上品淬体丹
+        {304, 240},   // 极品淬体丹
+        {305, 25},    // 下品聚气丹
+        {306, 50},    // 中品聚气丹
+        {307, 100},   // 上品聚气丹
+        {308, 200},   // 极品聚气丹
+        {309, 25},    // 下品养神丹
+        {310, 50},    // 中品养神丹
+        {311, 100},   // 上品养神丹
+        {312, 200},   // 极品养神丹
+        {313, 40},    // 下品启悟丹
+        {314, 80},    // 中品启悟丹
+        {315, 160},   // 上品启悟丹
+        {316, 320},   // 极品启悟丹
+        {317, 50},    // 下品培元丹
+        {318, 100},   // 中品培元丹
+        {319, 200},   // 上品培元丹
+        {320, 400},   // 极品培元丹
+        {321, 35},    // 下品精工丹
+        {322, 70},    // 中品精工丹
+        {323, 140},   // 上品精工丹
+        {324, 280},   // 极品精工丹
 
-
-        // ===== 法器 =====
+        // ===== 法器（藏宝阁售价表）=====
         {401, 800},   // 青锋灵剑
         {402, 1000},  // 玄铁裂爪
         {403, 2200},  // 流风环刃
@@ -174,12 +236,15 @@ static void bag_init() {
         {405, 6000},  // 寒魄断川刀
         {406, 18000}, // 曜日镇神戈
 
+        // ===== 四艺材料 =====
+        {230, 20},    // 精铁矿石（炼器）
+        {231, 15},    // 符纸（画符）
 
         // ===== 功法秘籍 =====
-        {501, 1200}, // 《丹道真解》
-        {502, 1200}, // 《器铸玄经》
-        {503, 1200}, // 《符箓通典》
-        {504, 1200}  // 《御兽灵诀》
+        {511, 1200},  // 《丹道真解》
+        {512, 1200},  // 《器铸玄经》
+        {513, 1200},  // 《符箓通典》
+        {514, 1200}   // 《御兽灵诀》
     };
 }
 

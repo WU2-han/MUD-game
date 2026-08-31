@@ -55,6 +55,30 @@ bool save_player(Player* player) {
     fp << "  \"sect_id\": " << player->sect_id << ",\n";
     fp << "  \"disciple_count\": " << player->disciple_count << ",\n";
 
+    // ---- V2.0 核心/每日/灵兽/剧情 ----
+    fp << "  \"con\": " << player->con << ",\n";
+    fp << "  \"spi\": " << player->spi << ",\n";
+    fp << "  \"wu\": " << player->wu << ",\n";
+    fp << "  \"spd\": " << player->spd << ",\n";
+    fp << "  \"stam\": " << player->stam << ",\n";
+    fp << "  \"max_stam\": " << player->max_stam << ",\n";
+    fp << "  \"prof\": " << player->prof << ",\n";
+    fp << "  \"day\": " << player->day << ",\n";
+    fp << "  \"pill_today\": " << player->pill_today << ",\n";
+    fp << "  \"rested_today\": " << (player->rested_today ? 1 : 0) << ",\n";
+    fp << "  \"monthly_got\": " << player->monthly_got << ",\n";
+    fp << "  \"beast_grade\": " << static_cast<int>(player->beast_grade) << ",\n";
+    fp << "  \"beast_id\": " << player->beast_id << ",\n";
+    fp << "  \"beast_atk\": " << player->beast_atk << ",\n";
+    fp << "  \"beast_hp\": " << player->beast_hp << ",\n";
+    fp << "  \"beast_skill_id\": " << player->beast_skill_id << ",\n";
+    fp << "  \"prestige\": " << player->prestige << ",\n";
+    fp << "  \"atk_buff\": " << player->atk_buff << ",\n";
+    fp << "  \"def_buff\": " << player->def_buff << ",\n";
+    fp << "  \"story_phase\": " << player->story_phase << ",\n";
+    fp << "  \"title\": \"" << player->title << "\",\n";
+    fp << "  \"tags\": \"" << player->tags << "\",\n";
+
     // 背包
     fp << "  \"inventory\": [\n";
     for (size_t i = 0; i < player->inventory.size(); i++) {
@@ -139,6 +163,8 @@ Player* load_player(const std::string& name) {
         if (sscanf(trimmed.c_str(), " \"%[^\"]\": \"%[^\"]\"", key, value) == 2) {
             if (strcmp(key, "name") == 0) p->name = value;
             else if (strcmp(key, "password") == 0) p->password = value;
+            else if (strcmp(key, "title") == 0) p->title = value;
+            else if (strcmp(key, "tags") == 0) p->tags = value;
         } else {
             // 解析数字值
             auto colon = trimmed.find(':');
@@ -170,6 +196,27 @@ Player* load_player(const std::string& name) {
                         else if (k == "current_room_id") p->current_room_id = num;
                         else if (k == "sect_id") p->sect_id = num;
                         else if (k == "disciple_count") p->disciple_count = num;
+                        // V2.0 字段
+                        else if (k == "con") p->con = num;
+                        else if (k == "spi") p->spi = num;
+                        else if (k == "wu") p->wu = num;
+                        else if (k == "spd") p->spd = num;
+                        else if (k == "stam") p->stam = num;
+                        else if (k == "max_stam") p->max_stam = num;
+                        else if (k == "prof") p->prof = num;
+                        else if (k == "day") p->day = num;
+                        else if (k == "pill_today") p->pill_today = num;
+                        else if (k == "rested_today") p->rested_today = (num != 0);
+                        else if (k == "monthly_got") p->monthly_got = num;
+                        else if (k == "beast_grade") p->beast_grade = static_cast<BeastGrade>(num);
+                        else if (k == "beast_id") p->beast_id = num;
+                        else if (k == "beast_atk") p->beast_atk = num;
+                        else if (k == "beast_hp") p->beast_hp = num;
+                        else if (k == "beast_skill_id") p->beast_skill_id = num;
+                        else if (k == "prestige") p->prestige = num;
+                        else if (k == "atk_buff") p->atk_buff = num;
+                        else if (k == "def_buff") p->def_buff = num;
+                        else if (k == "story_phase") p->story_phase = num;
                     }
                 }
             }

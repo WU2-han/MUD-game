@@ -50,6 +50,12 @@ void item_init();
 Item* item_create(int id, const std::string& name, const std::string& desc,
                   ItemType type, int value, int hp_bonus, int mp_bonus,
                   int atk_bonus, int def_bonus, int exp_bonus, bool stackable);
+// 高级创建：支持 V2.0 丹药品阶/各项加成/法器标记
+Item* item_create_adv(int id, const std::string& name, const std::string& desc,
+                      ItemType type, int value, PillGrade grade, bool stackable);
+void item_configure(Item* it, int hp_bonus, int mp_bonus, int atk_bonus, int def_bonus,
+                    int exp_bonus, int con_bonus, int spi_bonus, int wu_bonus,
+                    int spd_bonus, int stam_bonus, int prof_bonus, bool is_artifact);
 Item* item_get(int id);
 int item_count();
 std::map<int, Item>& item_get_all();

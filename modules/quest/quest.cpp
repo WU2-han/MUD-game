@@ -2,12 +2,12 @@
  * 模块E：策划 / 剧情、任务、全部文本素材
  * 负责人：成员E
  *
- * 可用接口:
- * - event_listen()   监听事件
- * - event_emit()     触发事件
- * - player_add_exp() 增加修为
- * - player_add_gold() 增加灵石
- * - player_add_item() 添加道具
+ * 主推：主线剧情任务链《沧渊遗恨·正邪辨》序章 + 九章
+ * 对齐《修仙大世界MUD》V2.0 第四章剧情门槛重构表
+ *
+ * 机制：线性剧情，按 phase 推进。进入特定房间/满足门槛 自动触发，
+ *      含灵石门/道具/击败BOSS/威望等条件用 story 命令主动推进。
+ *      并兑现策划的【标签/线索】【称号】与第八章【威望】门槛。
  * ============================================ */
 
 #include "../include/mud.hpp"
@@ -15,178 +15,250 @@
 // 前向声明
 bool player_add_exp(Player* player, int amount);
 void player_add_gold(Player* player, int amount);
+bool player_spend_gold(Player* player, int amount);
 bool player_add_item(Player* player, const Item& item);
 Item* item_get(int id);
+NPC* npc_get(int id);
 void event_listen(EventType type, EventCallback callback);
 void event_emit(EventType type, Player* player, void* data);
 
-// 任务结构
-struct Quest {
-    int id;
-    std::string name;
-    std::string desc;
-    std::string objective;
-    int target_count;
-    int current_count;
-    int exp_reward;
-    int gold_reward;
-    int item_reward_id;
-    bool completed;
+// ---- 剧情步骤 ----
+struct StoryStep {
+    int room;            // 触发房间（0=任意）
+    int exp_floor;       // 触发修为下限
+    int day_floor;       // 触发游戏天数下限
+    int cost;            // 需花费灵石（0无）
+    int item_need;       // 需持有道具（0无）
+    bool need_beat_boss; // 需已击败墨阳子(NPC 502)
+    int prestige_floor;  // 需宗门威望下限（第八章门称）
+    const char* title;   // 章节标题
+    const char* text;    // 剧情文本
+    // 奖励
+    int r_exp, r_gold, r_item, r_qty, r_con, r_wu, r_prof, r_prestige;
+    const char* tag;     // 获得的标签/线索（""无；加前缀"~"表示称号）
 };
 
-static std::vector<Quest> g_quests;
-static std::vector<int> g_player_quests; // 玩家已接受的任务ID
+static const StoryStep g_story[] = {
+    // ============ 序章：故交美名·日常渗透（金丹期，修为≥3000）============
+    { 3, 3000, 0, 0, 0, false, 0, "序章·讲堂听道",
+      "墨长老于传功讲堂宣讲先贤遗训。你潜心听道，悟性大增，对墨阳子长老与宗主凌沧渊的往事亦有所耳闻。",
+      150, 0, 0, 0, 0, 2, 0, 0, 0 },
+    { 5, 3000, 0, 0, 0, false, 0, "序章·演武切磋",
+      "铁武师邀你切磋，忆起宗主当年仗义行侠的旧事。拳脚往来间，筋骨渐强。",
+      120, 0, 0, 0, 2, 0, 0, 0, 0 },
+    { 6, 3000, 0, 0, 0, false, 0, "序章·百艺论丹",
+      "苏玄与你论丹道，赠你两颗淬体丹，四艺心得更上层楼。",
+      0, 0, 301, 2, 0, 0, 80, 0, 0 },
+    { 4, 3000, 0, 0, 0, false, 0, "序章·藏宝购物",
+      "钱掌柜提起墨阳子长老常年出资抚恤遗孤，人称‘仁厚长者’。你对墨阳子留下初步好感。",
+      0, 100, 0, 0, 0, 0, 0, 0, "墨阳子·仁厚印象" },
 
-static void cmd_quest(Player* player, const std::string& args) {
+    // ============ 第一章：烽烟骤起·临危受命（完成序章，修为≥3500）============
+    { 8, 3500, 0, 0, 0, false, 0, "第一章·警钟骤响",
+      "警钟震响！边境魔族破袭。大殿之上，墨阳子主动请缨担任联军副帅，言辞慷慨，众皆动容。",
+      200, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 13, 3500, 0, 0, 0, false, 0, "第一章·深夜授命",
+      "深夜，凌沧渊独召你入书房，眼含悲意：“此行凶险，若有万一，青云宗便托付于你。”他亲授【青云令】。",
+      300, 0, 601, 1, 0, 0, 0, 0, 0 },
+    { 21, 3500, 0, 0, 0, false, 0, "第一章·大军出征",
+      "山门前大军开拔。墨阳子挥手叮嘱你留守宗门，言语关切，望向青云令的目光却掠过一丝阴鸷。",
+      200, 0, 0, 0, 0, 0, 0, 0, 0 },
+
+    // ============ 第二章：捷报悲音·恩师陨落（修炼/做任务满3天，修为≥4000）============
+    { 1, 4000, 3, 0, 0, false, 0, "第二章·捷报虚堂",
+      "数日来前线捷报频传，宗门上下喜气洋洋。你却在捷报中嗅到一丝不寻常的意味。",
+      200, 0, 0, 0, 0, 0, 0, 40, 0 },
+    { 8, 4000, 3, 0, 0, false, 0, "第二章·噩耗惊天",
+      "三更时分，噩耗传来——凌沧渊宗主战死殉国！墨阳子素服扶棺，呕血三升，众人皆赞他重情重义。",
+      300, 0, 0, 0, 0, 0, 0, 0, "掌门好感" },
+    { 15, 4000, 3, 0, 0, false, 0, "第二章·守灵观尸",
+      "守灵之夜，你验看宗主遗体，赫然发现致命伤竟是后心一道纯阳剑伤！此剑法非敌所习，疑云顿起。",
+      200, 0, 0, 0, 0, 0, 0, 40, "致命纯阳剑伤" },
+
+    // ============ 第三章：疑窦初生·蛛丝马迹（集齐4条线索）============
+    { 14, 4000, 3, 0, 0, false, 0, "第三章·查战报",
+      "你悄悄查阅大殿文卷室的战报，发现生还者竟全为玄阳宗人，战报上的数字亦有涂改痕迹。",
+      200, 0, 0, 0, 0, 0, 0, 25, "战报涂改痕迹" },
+    { 16, 4000, 3, 0, 0, false, 0, "第三章·验灵力",
+      "丹道长老为你鉴别遗体伤口，确认残留的正是《纯阳噬灵功》特有的纯阳剑气。",
+      200, 0, 0, 0, 0, 0, 0, 25, "纯阳剑气鉴定" },
+    { 4, 4000, 3, 200, 0, false, 0, "第三章·查账目",
+      "你花费200灵石，从钱掌柜处买到玄阳宗近期大量收购兽核、并四处打探青云令的异常账目。",
+      300, 0, 0, 0, 0, 0, 0, 25, "异常交易记录" },
+    { 7, 4000, 3, 0, 0, false, 0, "第三章·探山情",
+      "老猎户密报，玄阳宗弟子近日暗中潜入妖兽山脉禁地，行踪诡秘，似在搜寻什么。",
+      200, 0, 0, 0, 0, 0, 0, 25, "玄阳宗禁地异动" },
+
+    // ============ 第四章：战地寻踪（突破元婴4500）============
+    { 18, 4500, 3, 0, 0, false, 0, "第四章·潜行出宗",
+      "深夜你潜出宗门，绕开巡逻妖将，直奔落风谷，前往战地探寻幸存者。",
+      400, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 19, 4500, 3, 0, 0, false, 0, "第四章·山村访证",
+      "落风谷山村中，你找到隐藏的杂役阿石。他涕泪俱下，证实墨阳子背后行刺宗主、并灭口青云宗知情弟子！你得到了【阿石证词】与【玄阳令牌碎片】。",
+      500, 0, 603, 1, 0, 0, 0, 60, "阿石证词" },
+
+    // ============ 第五章：魔窟遇故（突破化神7500）============
+    { 11, 7500, 3, 0, 0, false, 0, "第五章·魔月之遇",
+      "妖兽山脉核心，你凭青云令与魔族圣子魔月对峙。魔月道出惊天真相：魔族从未毁约，屠村陷害者实为玄阳宗！临别，他赠你一枚【记忆晶石】，内中封存着当时的证据画面。",
+      600, 0, 602, 1, 0, 0, 0, 40, 0 },
+    { 0, 7500, 3, 0, 602, false, 0, "第五章·晶石显影",
+      "你于背包激活【记忆晶石】，亲眼目睹玄阳宗弟子吸取无辜村生灵元、修炼邪功的惨状，实证确凿！",
+      800, 0, 0, 0, 0, 0, 0, 50, "屠村实证" },
+
+    // ============ 第六章：途中遇刺============
+    { 20, 7500, 3, 0, 0, false, 0, "第六章·密林伏杀",
+      "返宗密林，三名玄阳宗死士猝然杀出，欲夺青云令并将你灭口！你全力应战，搜出墨阳子私印的【刺杀密令】。",
+      600, 0, 0, 0, 0, 0, 0, 50, "刺杀密令" },
+    { 21, 7500, 3, 0, 0, false, 0, "第六章·星夜返宗",
+      "你星夜兼程赶回宗门。山门处御兽长老苦苦支撑：墨阳子已进驻宗门大殿，逼你交出青云令！",
+      500, 0, 0, 0, 0, 0, 0, 0, 0 },
+
+    // ============ 第七章：叛道证人（突破炼虚10500）============
+    { 4, 10500, 3, 500, 0, false, 0, "第七章·钱掌柜牵线",
+      "你花费500灵石，托钱掌柜联系上被玄阳宗追杀的叛徒清玄道长。",
+      400, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 17, 10500, 3, 0, 0, false, 0, "第七章·秘洞之证",
+      "妖兽山脉秘洞中，清玄子揭露墨阳子以《纯阳噬灵功》残害同门、谋害宗主的全部阴谋，呈上【墨阳子亲笔修炼手札】与【战前伏击密信】。铁证如山！",
+      1000, 0, 0, 0, 0, 0, 0, 60, "墨阳子亲笔修炼手札" },
+
+    // ============ 第八章：宗门对峙（突破合体16000，威望≥300）============
+    { 8, 16000, 3, 0, 0, false, 300, "第八章·大殿对质",
+      "宗门大殿，你当众历数五重铁证，层层剥落墨阳子的伪君子面具！他恼羞成怒，当场翻脸。",
+      800, 0, 0, 0, 0, 0, 0, 60, 0 },
+    { 22, 16000, 3, 0, 0, true, 0, "第八章·正邪一战",
+      "大殿广场，你联合三大长老对决大乘期残血的墨阳子！激战之中，你催动【青云令】，借宗门大阵击碎其护体罡气，将这名伪君子彻底废除修为、当场拿下！",
+      2000, 0, 0, 0, 0, 0, 0, 100, 0 },
+
+    // ============ 第九章：正邪之辨（修为25000大乘）============
+    { 11, 25000, 3, 0, 0, false, 0, "第九章·边境立约",
+      "于妖兽山脉会见魔月，你代表正道致歉，重签三百年仙魔和平条约，获封【和平使者】。",
+      1500, 0, 0, 0, 0, 0, 0, 150, "~和平使者" },
+    { 24, 25000, 3, 0, 0, false, 0, "第九章·继任宗主",
+      "宗门大典，三大长老与全宗推举你继任青云宗宗主，亲手接过宗主印信！‘正邪不在种族，而在人心’，你登顶青云，主线圆满。",
+      3000, 2000, 0, 0, 0, 0, 0, 200, "~青云宗宗主" },
+};
+
+static const int g_story_count = sizeof(g_story) / sizeof(g_story[0]);
+
+static bool has_item(const Player* p, int item_id) {
+    for (const auto& it : p->inventory) if (it.id == item_id) return true;
+    return false;
+}
+
+// 记录标签/称号（前缀"~"为称号）
+static void grant_tag(Player* p, const char* tg) {
+    if (!tg || !*tg) return;
+    if (tg[0] == '~') {                   // 称号
+        p->title = tg + 1;
+        printf("（获得称号：【%s】）\n", p->title.c_str());
+        return;
+    }
+    if (p->tags.find(tg) != std::string::npos) return; // 去重
+    if (!p->tags.empty()) p->tags += "、";
+    p->tags += tg;
+    printf("（获得标签/线索：【%s】）\n", tg);
+}
+
+static bool step_ready(const Player* p, const StoryStep& s) {
+    if (p->exp < s.exp_floor) return false;
+    if (p->day < s.day_floor) return false;
+    if (s.cost > 0 && p->gold < s.cost) return false;
+    if (s.item_need > 0 && !has_item(p, s.item_need)) return false;
+    if (s.prestige_floor > 0 && p->prestige < s.prestige_floor) return false;
+    if (s.need_beat_boss) {
+        NPC* b = npc_get(502);
+        if (b && b->is_alive) return false;
+    }
+    return true;
+}
+
+static void apply_story_rewards(Player* p, const StoryStep& s) {
+    if (s.r_exp > 0) player_add_exp(p, s.r_exp);
+    if (s.r_gold > 0) player_add_gold(p, s.r_gold);
+    if (s.r_item > 0) {
+        Item* tmpl = item_get(s.r_item);
+        if (tmpl) {
+            Item it = *tmpl;
+            it.quantity = s.r_qty > 0 ? s.r_qty : 1;
+            if (it.quantity > 1)
+                printf("（获得剧情奖励：%s x%d）\n", it.name.c_str(), it.quantity);
+            else
+                printf("（获得剧情奖励：%s）\n", it.name.c_str());
+            player_add_item(p, it);
+        }
+    }
+    if (s.cost > 0) player_spend_gold(p, s.cost);
+    if (s.r_con > 0) { p->con += s.r_con; }
+    if (s.r_wu > 0)  { p->wu  += s.r_wu;  }
+    if (s.r_prof > 0){ p->prof = std::min(10000, p->prof + s.r_prof); }
+    if (s.r_prestige > 0) { p->prestige += s.r_prestige;
+                            printf("（宗门威望 +%d）\n", s.r_prestige); }
+    if (s.tag) grant_tag(p, s.tag);
+    player_recalc_stats(p);
+}
+
+// 尝试推进剧情
+static void story_advance(Player* player) {
+    if (player->story_phase >= g_story_count) return;
+    const StoryStep& s = g_story[player->story_phase];
+
+    if (s.room > 0 && player->current_room_id != s.room) return;
+    if (!step_ready(player, s)) return;
+
+    printf("\n════════ 主线剧情 · %s ════════\n", s.title);
+    printf("%s\n", s.text);
+    printf("════════════════════════════════\n\n");
+    apply_story_rewards(player, s);
+    player->story_phase++;
+}
+
+static void cmd_story(Player* player, const std::string& args) {
     (void)args;
-    printf("\n========== 任务列表 ==========\n");
-    if (g_player_quests.empty()) {
-        printf("  暂无任务。去宗门大殿找长老接取任务吧！\n");
-    }
-    for (int qid : g_player_quests) {
-        for (auto& q : g_quests) {
-            if (q.id == qid) {
-                printf("  [%d] %s\n", q.id, q.name.c_str());
-                printf("      目标: %s (%d/%d)\n",
-                       q.objective.c_str(), q.current_count, q.target_count);
-                printf("      奖励: %d修为 %d灵石",
-                       q.exp_reward, q.gold_reward);
-                if (q.item_reward_id > 0) {
-                    Item* it = item_get(q.item_reward_id);
-                    if (it) printf(" %s", it->name.c_str());
-                }
-                printf("\n");
-            }
-        }
-    }
-    printf("==============================\n\n");
-}
-
-static void cmd_accept(Player* player, const std::string& args) {
-    if (args.empty()) {
-        printf("用法: accept <任务ID>\n");
-        printf("可接任务:\n");
-        for (auto& q : g_quests) {
-            bool already = false;
-            for (int qid : g_player_quests) {
-                if (qid == q.id) { already = true; break; }
-            }
-            if (!already && !q.completed) {
-                printf("  [%d] %s - %s\n", q.id, q.name.c_str(), q.desc.c_str());
-            }
-        }
+    if (player->story_phase >= g_story_count) {
+        printf("主线《沧渊遗恨·正邪辨》已全部完成，你已成为【%s】！\n",
+               player->title.empty() ? "传奇人物" : player->title.c_str());
         return;
     }
-
-    int qid = 0;
-    try { qid = std::stoi(args); } catch (...) { qid = 0; }
-
-    for (auto& q : g_quests) {
-        if (q.id == qid) {
-            bool already = false;
-            for (int pq : g_player_quests) {
-                if (pq == qid) { already = true; break; }
-            }
-            if (already) {
-                printf("你已经接受了这个任务。\n");
-                return;
-            }
-            g_player_quests.push_back(qid);
-            printf("接受了任务: %s\n", q.name.c_str());
-            printf("目标: %s\n", q.objective.c_str());
-            return;
-        }
+    const StoryStep& s = g_story[player->story_phase];
+    printf("\n【当前主线】%s\n", s.title);
+    if (s.room > 0 && player->current_room_id != s.room) {
+        Room* r = room_get(s.room);
+        printf("  请前往：%s\n", r ? r->name.c_str() : "某处");
     }
-    printf("找不到任务ID: %d\n", qid);
+    if (s.exp_floor > 0 && player->exp < s.exp_floor)
+        printf("  需修为 ≥ %d（当前 %d）\n", s.exp_floor, player->exp);
+    if (s.day_floor > 0 && player->day < s.day_floor)
+        printf("  需游戏第 %d 天（当前第 %d 天）\n", s.day_floor, player->day);
+    if (s.cost > 0) printf("  需花费：%d 灵石\n", s.cost);
+    if (s.prestige_floor > 0)
+        printf("  需宗门威望 ≥ %d（当前 %d）\n", s.prestige_floor, player->prestige);
+    if (s.item_need > 0) {
+        Item* it = item_get(s.item_need);
+        printf("  需持有：%s%s\n", it ? it->name.c_str() : "关键道具",
+               has_item(player, s.item_need) ? "（已持有）" : "（未持有）");
+    }
+    if (s.need_beat_boss) printf("  需先在广场击败墨阳子后，方可推进本剧情。\n");
+    if (!player->tags.empty()) printf("  已获线索：%s\n", player->tags.c_str());
+    printf("  满足条件后输入 story 推进剧情。\n");
 }
 
-static void cmd_complete(Player* player, const std::string& args) {
-    if (args.empty()) {
-        printf("用法: complete <任务ID>\n");
-        return;
-    }
-
-    int qid = 0;
-    try { qid = std::stoi(args); } catch (...) { qid = 0; }
-
-    for (auto& q : g_quests) {
-        if (q.id == qid) {
-            // 检查是否接受
-            bool accepted = false;
-            for (int pq : g_player_quests) {
-                if (pq == qid) { accepted = true; break; }
-            }
-            if (!accepted) {
-                printf("你还没有接受这个任务。\n");
-                return;
-            }
-            if (q.completed) {
-                printf("任务已完成。\n");
-                return;
-            }
-            if (q.current_count < q.target_count) {
-                printf("任务尚未完成。进度: %d/%d\n", q.current_count, q.target_count);
-                return;
-            }
-
-            printf("恭喜！任务完成: %s\n", q.name.c_str());
-            player_add_exp(player, q.exp_reward);
-            player_add_gold(player, q.gold_reward);
-            if (q.item_reward_id > 0) {
-                Item* it = item_get(q.item_reward_id);
-                if (it) player_add_item(player, *it);
-            }
-            q.completed = true;
-
-            // 从玩家任务列表移除
-            auto it = std::find(g_player_quests.begin(), g_player_quests.end(), qid);
-            if (it != g_player_quests.end()) g_player_quests.erase(it);
-            return;
-        }
-    }
-    printf("找不到任务ID: %d\n", qid);
+static void on_room_enter(EventType type, Player* player, void* data) {
+    (void)type; (void)data;
+    if (player) story_advance(player);
+}
+static void on_combat_end(EventType type, Player* player, void* data) {
+    (void)type; (void)data;
+    if (player) story_advance(player);
 }
 
-// 事件回调：击杀怪物时更新任务进度
-static void on_player_kill_npc(EventType type, Player* player, void* data) {
-    (void)type;
-    (void)player;
-    (void)data;
-    for (auto& q : g_quests) {
-        bool accepted = false;
-        for (int pq : g_player_quests) {
-            if (pq == q.id) { accepted = true; break; }
-        }
-        if (accepted && !q.completed && q.objective.find("击杀") != std::string::npos) {
-            q.current_count++;
-        }
-    }
-}
-
-// ---- 模块命令列表 ----
 static std::vector<Command> quest_commands = {
-    {"quest",    {"task"},   "查看任务",                    cmd_quest},
-    {"accept",   {},         "接受任务 (accept <任务ID>)",   cmd_accept},
-    {"complete", {"finish"}, "提交任务 (complete <任务ID>)", cmd_complete},
+    {"story", {"jvqing"}, "主线剧情推进/查看", cmd_story},
 };
-
-// ---- 模块初始化/更新/清理 ----
 
 static void quest_init() {
-    printf("[模块E] 任务剧情系统初始化\n");
-
-    // 初始化主线任务
-    g_quests = {
-        {1, "初入修仙", "踏上修仙之路的第一步",
-         "击杀2只野狼", 2, 0, 200, 100, 201, false},
-        {2, "灵药采集", "为宗门采集灵草",
-         "收集3株灵草", 3, 0, 300, 150, 203, false},
-        {3, "妖兽猎人", "清除妖兽森林的威胁",
-         "击杀1只妖兽虎", 1, 0, 500, 300, 204, false},
-    };
-
-    // 监听击杀事件，自动更新任务进度
-    event_listen(EventType::COMBAT_END, on_player_kill_npc);
+    printf("[模块E] 剧情任务系统初始化（主线《沧渊遗恨·正邪辨》）\n");
+    event_listen(EventType::PLAYER_ENTER_ROOM, on_room_enter);
+    event_listen(EventType::COMBAT_END, on_combat_end);
 }
 
 static void quest_tick(Player* player) {
@@ -194,12 +266,11 @@ static void quest_tick(Player* player) {
 }
 
 static void quest_cleanup() {
-    printf("[模块E] 任务剧情系统清理\n");
+    printf("[模块E] 剧情任务系统清理\n");
 }
 
-// ---- 模块导出 ----
 Module quest_module = {
-    "任务剧情",
+    "剧情任务",
     quest_init,
     quest_tick,
     quest_cleanup,

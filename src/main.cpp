@@ -152,6 +152,19 @@ static void cmd_status(Player* player, const std::string& args) {
            player->hp, player->mp, player->gold);
     printf("║ 攻击: %-4d  防御: %-4d         ║\n",
            player->atk, player->def);
+    printf("║ 体质: %-4d 灵力: %-4d 悟性: %-4d ║\n",
+           player->con, player->spi, player->wu);
+    printf("║ 速度: %-4d 精力: %-4d/%-4d       ║\n",
+           player->spd, player->stam, player->max_stam);
+    printf("║ 四艺熟练度: %-4d/10000  游戏第%d天 ║\n",
+           player->prof, player->day);
+    printf("║ 宗门地位: %s             ║\n", sect_rank_name(player->realm));
+    if (!player->title.empty()) printf("║ 称号: %s                   ║\n", player->title.c_str());
+    if (player->prestige > 0)   printf("║ 宗门威望: %-6d               ║\n", player->prestige);
+    if (player->beast_id > 0) {
+        printf("║ 灵兽: 品级%d  攻+%d                 ║\n",
+               static_cast<int>(player->beast_grade), player->beast_atk);
+    }
     printf("╠════════════════════════════════╣\n");
 
     // 背包
@@ -196,6 +209,12 @@ static void cmd_breakthrough(Player* player, const std::string& args) {
 
 static void cmd_meditate(Player* player, const std::string& args) {
     (void)args;
+    // 打坐修炼消耗精力（每日精力有限，需休息/养神丹补充，防无限爆肝）
+    if (player->stam < 10) {
+        printf("精力不足（需10），难以入定。可回家休息(rest)、服用养神丹恢复。\n");
+        return;
+    }
+    player->stam -= 10;
     // 打坐恢复 + 获得少量修为
     int hp_gain = player->max_hp / 10 + 10;
     int mp_gain = player->max_mp / 5 + 5;
@@ -206,8 +225,9 @@ static void cmd_meditate(Player* player, const std::string& args) {
     player->exp += exp_gain;
 
     printf("你盘膝打坐，吸纳天地灵气...\n");
-    printf("HP+%d  MP+%d  修为+%d\n", hp_gain, mp_gain, exp_gain);
-    printf("当前修为: %d / %d\n", player->exp, player->exp_to_next);
+    printf("HP+%d  MP+%d  修为+%d  精力-10\n", hp_gain, mp_gain, exp_gain);
+    printf("当前修为: %d / %d  精力: %d/%d\n",
+           player->exp, player->exp_to_next, player->stam, player->max_stam);
 }
 
 static void cmd_inventory(Player* player, const std::string& args) {
@@ -404,167 +424,152 @@ static void cmd_load(Player** player_ptr, const std::string& args) {
 
 // ===== 初始化世界数据 =====
 
+static void init_item_configure(Item* it, int hp_bonus, int mp_bonus, int atk_bonus, int def_bonus,
+                                int exp_bonus, int con_bonus, int spi_bonus, int wu_bonus,
+                                int spd_bonus, int stam_bonus, int prof_bonus, bool is_artifact) {
+    item_configure(it, hp_bonus, mp_bonus, atk_bonus, def_bonus,
+                   exp_bonus, con_bonus, spi_bonus, wu_bonus,
+                   spd_bonus, stam_bonus, prof_bonus, is_artifact);
+}
+
 static void init_game_data() {
-    // ---- 初始化道具模板 ----
-    item_create(201, "疗伤丹", "恢复100点生命值的一品丹药",
-                ItemType::PILL, 50, 100, 0, 0, 0, 0, true);
-    item_create(202, "回灵丹", "恢复50点灵力的丹药",
-                ItemType::PILL, 40, 0, 50, 0, 0, 0, true);
-    item_create(203, "聚气丹", "服用后获得大量修为",
-                ItemType::PILL, 200, 0, 0, 0, 0, 200, true);
-    item_create(204, "铁剑", "一把普通的铁剑，略有锋芒",
-                ItemType::WEAPON, 100, 0, 0, 15, 0, 0, false);
-    item_create(205, "布甲", "粗布缝制的护甲",
-                ItemType::ARMOR, 80, 20, 0, 0, 10, 0, false);
-    item_create(206, "筑基功法", "记载了筑基期修炼法门的秘籍",
-                ItemType::MANUAL, 300, 0, 0, 0, 0, 500, false);
-    item_create(207, "灵草", "一株散发着灵气的药草",
-                ItemType::MATERIAL, 30, 0, 0, 0, 0, 0, true);
-    item_create(208, "妖丹", "妖兽体内凝结的精华",
-                ItemType::MATERIAL, 100, 0, 0, 0, 0, 50, true);
-    item_create(209, "灵石袋", "装有一些灵石的小袋子",
-                ItemType::MISC, 500, 0, 0, 0, 0, 0, false);
-    item_create(210, "筑基丹", "大幅提升突破筑基期成功率的丹药",
-                ItemType::PILL, 500, 200, 100, 0, 0, 1000, false);
-    item_create(211, "灵剑", "蕴含灵力的宝剑",
-                ItemType::WEAPON, 500, 0, 0, 30, 0, 0, false);
-    item_create(212, "灵甲", "以灵力编织的护甲",
-                ItemType::ARMOR, 400, 50, 20, 0, 20, 0, false);
-    item_create(213, "金丹功法", "记载了金丹大道的高深秘籍",
-                ItemType::MANUAL, 1000, 0, 0, 0, 0, 2000, false);
+    // ---- 初始化道具模板（对齐《修仙大世界MUD》V2.0 丹药/法器/材料表）----
+    Item* it;
 
-    // ---- 初始化NPC模板 ----
-    npc_create(101, "野狼", "一只凶猛的野狼，眼中泛着绿光",
-               NPCType::MONSTER, RealmLevel::MORTAL,
-               80, 15, 3, 30, 20, 207);
-    npc_create(102, "黑熊", "一头体型庞大的黑熊",
-               NPCType::MONSTER, RealmLevel::MORTAL,
-               150, 20, 8, 50, 50, 205);
-    npc_create(103, "妖兽虎", "一只修炼成精的虎妖，已有炼气期修为",
-               NPCType::MONSTER, RealmLevel::QI_REFINE,
-               300, 40, 15, 150, 100, 208);
-    npc_create(104, "坊市商人", "一位精明的修仙坊市商人，贩卖各种修炼物资",
-               NPCType::MERCHANT, RealmLevel::FOUNDATION,
-               500, 30, 20, 0, 0, -1);
-    npc_create(105, "宗门长老", "一位仙风道骨的宗门长老，负责招收弟子",
-               NPCType::ELDER, RealmLevel::GOLDEN_CORE,
-               2000, 100, 50, 0, 0, -1);
-    npc_create(106, "秘境守卫", "试炼秘境入口的守护者，实力深不可测",
-               NPCType::MONSTER, RealmLevel::FOUNDATION,
-               800, 60, 30, 300, 200, 211);
-    npc_create(107, "灵蛇", "一条通体碧绿的毒蛇，剧毒无比",
-               NPCType::MONSTER, RealmLevel::QI_REFINE,
-               200, 35, 10, 100, 80, 207);
-    npc_create(108, "炼丹童子", "宗门炼丹房的小童，可以帮忙炼制丹药",
-               NPCType::MERCHANT, RealmLevel::QI_REFINE,
-               200, 20, 10, 0, 0, -1);
+    // [通用恢复]
+    it = item_create(201, "疗伤丹", "恢复100点生命值的一品丹药",
+                     ItemType::PILL, 50, 100, 0, 0, 0, 0, true);
+    it = item_create(202, "回灵丹", "恢复50点灵力的丹药",
+                     ItemType::PILL, 40, 0, 50, 0, 0, 0, true);
+    it = item_create(207, "灵草", "一株散发着灵气的药草",
+                     ItemType::MATERIAL, 30, 0, 0, 0, 0, 0, true);
+    it = item_create(208, "妖丹", "妖兽体内凝结的精华",
+                     ItemType::MATERIAL, 100, 0, 0, 0, 0, 50, true);
+    it = item_create(209, "灵石袋", "装有一些灵石的小袋子",
+                     ItemType::MISC, 500, 0, 0, 0, 0, 0, false);
 
-    // ---- 创建房间 ----
-    // 1. 新手村 - 出生点
-    room_create(1, "新手村", "一个宁静的小村庄，炊烟袅袅。这里是修仙之路的起点，村口立着一块石碑，上面刻着'仙缘起处'四个大字。");
-    // 2. 村外树林
-    room_create(2, "村外树林", "村外一片茂密的树林，阳光透过树叶洒下斑驳的光影。偶尔能听到野兽的低吼声，地上散落着一些灵草。");
-    // 3. 修仙坊市
-    room_create(3, "修仙坊市", "修仙者们交易物品的集市，热闹非凡。街道两旁摆满了各种摊位，丹药、法器、灵材应有尽有。");
-    // 4. 灵药山
-    room_create(4, "灵药山", "一座云雾缭绕的灵山，山上长满了各种珍稀灵药。空气中弥漫着浓郁的灵气，是修炼的绝佳之地。");
-    // 5. 妖兽森林
-    room_create(5, "妖兽森林", "一片阴森的古老森林，妖兽横行。只有实力足够强大的修仙者才敢深入此地。");
-    // 6. 宗门大殿
-    room_create(6, "宗门大殿", "太虚宗的大殿，气势恢宏。殿内供奉着历代祖师牌位，宗门长老在此主持事务。");
-    // 7. 试炼秘境
-    room_create(7, "试炼秘境", "一处古老的试炼秘境，据说其中藏有上古传承。秘境内机关重重，危险与机遇并存。");
-    // 8. 藏经阁
-    room_create(8, "藏经阁", "宗门收藏功法秘籍的宝库。书架林立，各种修炼法门应有尽有，但需要相应的境界才能阅览。");
-    // 9. 炼丹房
-    room_create(9, "炼丹房", "宗门炼丹之地，丹炉中火焰熊熊。空气中弥漫着各种丹药的香气，炼丹童子正在忙碌。");
-    // 10. 御兽园
-    room_create(10, "御兽园", "宗门饲养灵兽的园子，各种奇珍异兽在此栖息。驯服一只灵兽可以大大增强战力。");
-    // 11. 渡劫台
-    room_create(11, "渡劫台", "宗门后山的渡劫台，专门为突破渡劫期的弟子准备。台上雷电交加，气势惊人。");
-    // 12. 后山山洞
-    room_create(12, "后山山洞", "一个隐蔽的山洞，洞壁上镶嵌着发光的灵石。传闻有前辈高人在此留下了传承。");
+    // [兽核材料]
+    it = item_create(220, "兽皮", "妖兽身上剥下的皮，可用于炼器",
+                     ItemType::MATERIAL, 15, 0, 0, 0, 0, 0, true);
+    it = item_create(221, "狼爪", "腐爪灰狼锋利的爪子",
+                     ItemType::MATERIAL, 20, 0, 0, 0, 0, 0, true);
+    it = item_create(222, "毒牙", "雾影毒蟒的剧毒獠牙",
+                     ItemType::MATERIAL, 25, 0, 0, 0, 0, 0, true);
+    it = item_create(223, "熊皮", "岩甲巨熊坚韧的皮毛",
+                     ItemType::MATERIAL, 35, 0, 0, 0, 0, 0, true);
+    it = item_create(224, "兽核", "妖兽体内凝聚的核心",
+                     ItemType::MATERIAL, 60, 0, 0, 0, 0, 50, true);
+    it = item_create(225, "高阶兽核", "高阶妖兽的强大兽核",
+                     ItemType::MATERIAL, 150, 0, 0, 0, 0, 120, true);
+    it = item_create(226, "圣兽兽核", "圣兽级妖兽的内丹",
+                     ItemType::MATERIAL, 500, 0, 0, 0, 0, 400, true);
+    it = item_create(227, "药渣", "炼丹炸炉后残留的药渣，可在藏宝阁出售或于丹房合成止血散",
+                     ItemType::MATERIAL, 10, 0, 0, 0, 0, 0, true);
+    it = item_create_adv(228, "止血散", "低级药散，恢复100点气血", ItemType::PILL, 60, PillGrade::LOW, true);
+    init_item_configure(it, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false);
 
-    // ---- 设置出口 ----
-    // 新手村 ↔ 村外树林
-    room_set_exit(1, Direction::NORTH, 2);
-    room_set_exit(2, Direction::SOUTH, 1);
-    // 新手村 ↔ 修仙坊市
-    room_set_exit(1, Direction::EAST, 3);
-    room_set_exit(3, Direction::WEST, 1);
-    // 村外树林 ↔ 灵药山
-    room_set_exit(2, Direction::EAST, 4);
-    room_set_exit(4, Direction::WEST, 2);
-    // 灵药山 ↔ 妖兽森林
-    room_set_exit(4, Direction::NORTH, 5);
-    room_set_exit(5, Direction::SOUTH, 4);
-    // 灵药山 ↔ 宗门大殿
-    room_set_exit(4, Direction::UP, 6);
-    room_set_exit(6, Direction::DOWN, 4);
-    // 宗门大殿 ↔ 藏经阁
-    room_set_exit(6, Direction::EAST, 8);
-    room_set_exit(8, Direction::WEST, 6);
-    // 宗门大殿 ↔ 炼丹房
-    room_set_exit(6, Direction::WEST, 9);
-    room_set_exit(9, Direction::EAST, 6);
-    // 宗门大殿 ↔ 御兽园
-    room_set_exit(6, Direction::NORTH, 10);
-    room_set_exit(10, Direction::SOUTH, 6);
-    // 宗门大殿 → 渡劫台
-    room_set_exit(6, Direction::UP, 11);
-    room_set_exit(11, Direction::DOWN, 6);
-    // 妖兽森林 → 试炼秘境
-    room_set_exit(5, Direction::EAST, 7);
-    room_set_exit(7, Direction::WEST, 5);
-    // 后山山洞（从妖兽森林进入）
-    room_set_exit(5, Direction::NORTH, 12);
-    room_set_exit(12, Direction::SOUTH, 5);
+    // ---- 四艺材料 / 产出（铁渣、精铁矿石、符纸、符箓）----
+    it = item_create(229, "铁渣", "炼器/画符失败残留的残渣，可在藏宝阁出售",
+                      ItemType::MATERIAL, 10, 0, 0, 0, 0, 0, true);
+    it = item_create(230, "精铁矿石", "千锤百炼的精铁矿石，炼器的核心材料",
+                      ItemType::MATERIAL, 20, 0, 0, 0, 0, 0, true);
+    it = item_create(231, "符纸", "朱砂符纸，画符的必备材料",
+                      ItemType::MATERIAL, 15, 0, 0, 0, 0, 0, true);
+    it = item_create_adv(232, "破障符", "战斗威力符，使用后当日攻击+30", ItemType::PILL, 120, PillGrade::NONE, true);
+    init_item_configure(it, 0, 0, 30, 0, 0, 0, 0, 0, 0, 0, 0, false);
+    it = item_create_adv(233, "御灵符", "护体灵符，使用后当日被攻击减伤30", ItemType::PILL, 120, PillGrade::NONE, true);
+    init_item_configure(it, 0, 0, 0, 30, 0, 0, 0, 0, 0, 0, 0, false);
 
-    // ---- 设置境界锁 ----
-    room_lock_exit(1, Direction::EAST, false, RealmLevel::MORTAL);  // 坊市无锁
-    room_lock_exit(4, Direction::NORTH, true, RealmLevel::QI_REFINE); // 妖兽森林需炼气期
-    room_lock_exit(4, Direction::UP, true, RealmLevel::QI_REFINE);    // 宗门需炼气期
-    room_lock_exit(5, Direction::EAST, true, RealmLevel::FOUNDATION); // 秘境需筑基期
-    room_lock_exit(5, Direction::NORTH, true, RealmLevel::FOUNDATION);// 山洞需筑基期
-    room_lock_exit(6, Direction::UP, true, RealmLevel::TRIBULATION);  // 渡劫台需渡劫期
+    // [淬体丹：体质+血量] 下/中/上/极
+    it = item_create_adv(301, "下品淬体丹", "淬炼肉身，体质+2、血量上限+50", ItemType::PILL, 30, PillGrade::LOW, true);
+    init_item_configure(it, 50, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, false);
+    it = item_create_adv(302, "中品淬体丹", "淬炼肉身，体质+4、血量上限+100", ItemType::PILL, 60, PillGrade::MID, true);
+    init_item_configure(it, 100, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, false);
+    it = item_create_adv(303, "上品淬体丹", "淬炼肉身，体质+6、血量上限+150", ItemType::PILL, 120, PillGrade::HIGH, true);
+    init_item_configure(it, 150, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, false);
+    it = item_create_adv(304, "极品淬体丹", "淬炼肉身，体质+8、血量上限+200", ItemType::PILL, 240, PillGrade::TOP, true);
+    init_item_configure(it, 200, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, false);
 
-    // ---- 设置房间属性 ----
-    // 非安全区（可战斗）
-    Room* r2 = room_get(2); if (r2) r2->is_safe_zone = false;
-    Room* r5 = room_get(5); if (r5) r5->is_safe_zone = false;
-    Room* r7 = room_get(7); if (r7) r7->is_safe_zone = false;
-    Room* r12 = room_get(12); if (r12) r12->is_safe_zone = false;
+    // [聚气丹：恢复灵力%] 下/中/上/极
+    it = item_create_adv(305, "下品聚气丹", "恢复40%灵力", ItemType::PILL, 25, PillGrade::LOW, true);
+    init_item_configure(it, 0, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, false);
+    it = item_create_adv(306, "中品聚气丹", "恢复60%灵力", ItemType::PILL, 50, PillGrade::MID, true);
+    init_item_configure(it, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, false);
+    it = item_create_adv(307, "上品聚气丹", "恢复80%灵力", ItemType::PILL, 100, PillGrade::HIGH, true);
+    init_item_configure(it, 0, 80, 0, 0, 0, 0, 0, 0, 0, 0, 0, false);
+    it = item_create_adv(308, "极品聚气丹", "恢复100%灵力", ItemType::PILL, 200, PillGrade::TOP, true);
+    init_item_configure(it, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, false);
 
-    // 设置最低境界
-    Room* r6 = room_get(6); if (r6) r6->min_realm = RealmLevel::QI_REFINE;
-    Room* r7r = room_get(7); if (r7r) r7r->min_realm = RealmLevel::FOUNDATION;
-    Room* r11 = room_get(11); if (r11) r11->min_realm = RealmLevel::TRIBULATION;
+    // [养神丹：恢复精力%] 下/中/上/极
+    it = item_create_adv(309, "下品养神丹", "恢复40%精力", ItemType::PILL, 25, PillGrade::LOW, true);
+    init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40, 0, false);
+    it = item_create_adv(310, "中品养神丹", "恢复60%精力", ItemType::PILL, 50, PillGrade::MID, true);
+    init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, 0, false);
+    it = item_create_adv(311, "上品养神丹", "恢复80%精力", ItemType::PILL, 100, PillGrade::HIGH, true);
+    init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 0, 0, 80, 0, false);
+    it = item_create_adv(312, "极品养神丹", "恢复100%精力", ItemType::PILL, 200, PillGrade::TOP, true);
+    init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100, 0, false);
 
-    // ---- 房间放置NPC ----
-    room_add_npc(2, 101);  // 树林: 野狼
-    room_add_npc(4, 107);  // 灵药山: 灵蛇
-    room_add_npc(5, 102);  // 妖兽森林: 黑熊
-    room_add_npc(5, 103);  // 妖兽森林: 妖兽虎
-    room_add_npc(7, 106);  // 秘境: 秘境守卫
-    room_add_npc(3, 104);  // 坊市: 商人
-    room_add_npc(6, 105);  // 宗门: 长老
-    room_add_npc(9, 108);  // 炼丹房: 炼丹童子
-    room_add_npc(12, 103); // 山洞: 妖兽虎
+    // [启悟丹：悟性+速度%] 下/中/上/极
+    it = item_create_adv(313, "下品启悟丹", "悟性+2、速度+5%", ItemType::PILL, 40, PillGrade::LOW, true);
+    init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 2, 5, 0, 0, false);
+    it = item_create_adv(314, "中品启悟丹", "悟性+4、速度+8%", ItemType::PILL, 80, PillGrade::MID, true);
+    init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 4, 8, 0, 0, false);
+    it = item_create_adv(315, "上品启悟丹", "悟性+6、速度+12%", ItemType::PILL, 160, PillGrade::HIGH, true);
+    init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 6, 12, 0, 0, false);
+    it = item_create_adv(316, "极品启悟丹", "悟性+8、速度+16%", ItemType::PILL, 320, PillGrade::TOP, true);
+    init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 8, 16, 0, 0, false);
 
-    // ---- 房间放置道具 ----
-    room_add_item(2, 207);  // 树林: 灵草
-    room_add_item(2, 207);  // 树林: 灵草
-    room_add_item(4, 207);  // 灵药山: 灵草
-    room_add_item(4, 203);  // 灵药山: 聚气丹
-    room_add_item(5, 208);  // 妖兽森林: 妖丹
-    room_add_item(7, 211);  // 秘境: 灵剑
-    room_add_item(7, 212);  // 秘境: 灵甲
-    room_add_item(12, 213); // 山洞: 金丹功法
-    room_add_item(12, 210); // 山洞: 筑基丹
-    room_add_item(1, 201);  // 新手村: 疗伤丹（新手福利）
-    room_add_item(1, 202);  // 新手村: 回灵丹（新手福利）
+    // [培元丹：修为] 下/中/上/极
+    it = item_create_adv(317, "下品培元丹", "修为+300", ItemType::PILL, 50, PillGrade::LOW, true);
+    init_item_configure(it, 0, 0, 0, 0, 300, 0, 0, 0, 0, 0, 0, false);
+    it = item_create_adv(318, "中品培元丹", "修为+600", ItemType::PILL, 100, PillGrade::MID, true);
+    init_item_configure(it, 0, 0, 0, 0, 600, 0, 0, 0, 0, 0, 0, false);
+    it = item_create_adv(319, "上品培元丹", "修为+1000", ItemType::PILL, 200, PillGrade::HIGH, true);
+    init_item_configure(it, 0, 0, 0, 0, 1000, 0, 0, 0, 0, 0, 0, false);
+    it = item_create_adv(320, "极品培元丹", "修为+1500", ItemType::PILL, 400, PillGrade::TOP, true);
+    init_item_configure(it, 0, 0, 0, 0, 1500, 0, 0, 0, 0, 0, 0, false);
 
-    printf("[数据] 游戏世界初始化完成\n");
+    // [精工丹：熟练度] 下/中/上/极
+    it = item_create_adv(321, "下品精工丹", "四艺熟练度+80", ItemType::PILL, 35, PillGrade::LOW, true);
+    init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 80, false);
+    it = item_create_adv(322, "中品精工丹", "四艺熟练度+160", ItemType::PILL, 70, PillGrade::MID, true);
+    init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 160, false);
+    it = item_create_adv(323, "上品精工丹", "四艺熟练度+280", ItemType::PILL, 140, PillGrade::HIGH, true);
+    init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 280, false);
+    it = item_create_adv(324, "极品精工丹", "四艺熟练度+420", ItemType::PILL, 280, PillGrade::TOP, true);
+    init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 420, false);
+
+    // [法器（藏宝阁售价表）]
+    it = item_create_adv(401, "青锋灵剑", "低阶法器，攻击+22", ItemType::WEAPON, 800, PillGrade::NONE, false);
+    init_item_configure(it, 0, 0, 22, 0, 0, 0, 0, 0, 0, 0, 0, true);
+    it = item_create_adv(402, "玄铁裂爪", "低阶法器，攻击+28", ItemType::WEAPON, 1000, PillGrade::NONE, false);
+    init_item_configure(it, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, true);
+    it = item_create_adv(403, "流风环刃", "中阶法器，攻击+48", ItemType::WEAPON, 2200, PillGrade::NONE, false);
+    init_item_configure(it, 0, 0, 48, 0, 0, 0, 0, 0, 0, 0, 0, true);
+    it = item_create_adv(404, "焚火玉牌", "中阶法器，攻击+55", ItemType::WEAPON, 2600, PillGrade::NONE, false);
+    init_item_configure(it, 0, 0, 55, 0, 0, 0, 0, 0, 0, 0, 0, true);
+    it = item_create_adv(405, "寒魄断川刀", "高阶法器，攻击+92", ItemType::WEAPON, 6000, PillGrade::NONE, false);
+    init_item_configure(it, 0, 0, 92, 0, 0, 0, 0, 0, 0, 0, 0, true);
+    it = item_create_adv(406, "曜日镇神戈", "极品法器，攻击+160", ItemType::WEAPON, 18000, PillGrade::NONE, false);
+    init_item_configure(it, 0, 0, 160, 0, 0, 0, 0, 0, 0, 0, 0, true);
+
+    // [功法秘籍]
+    it = item_create(511, "《丹道真解》", "提升炼丹之道的秘籍，蕴含丰厚修为",
+                     ItemType::MANUAL, 1200, 0, 0, 0, 0, 800, false);
+    it = item_create(512, "《器铸玄经》", "炼器传承秘籍，蕴含丰厚修为",
+                     ItemType::MANUAL, 1200, 0, 0, 0, 0, 800, false);
+    it = item_create(513, "《符箓通典》", "符箓心法秘籍，蕴含丰厚修为",
+                     ItemType::MANUAL, 1200, 0, 0, 0, 0, 800, false);
+    it = item_create(514, "《御兽灵诀》", "御兽秘术典籍，蕴含丰厚修为",
+                     ItemType::MANUAL, 1200, 0, 0, 0, 0, 800, false);
+
+    // [主线关键道具]
+    it = item_create(601, "青云令", "掌门凌沧渊亲授的令牌，蕴含镇宗气运", ItemType::QUEST, 0, 0, 0, 0, 0, 0, false);
+    it = item_create(602, "记忆晶石", "记录过往画面的晶石", ItemType::QUEST, 0, 0, 0, 0, 0, 0, false);
+    it = item_create(603, "玄阳令牌碎片", "玄阳宗弟子的令牌残片", ItemType::QUEST, 0, 0, 0, 0, 0, 0, false);
+
+    printf("[数据] 道具有 %d 种初始化完成（房间/妖兽由世界模块负责）\n", item_count());
 }
 
 // ===== 主循环 =====

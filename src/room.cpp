@@ -63,6 +63,9 @@ void room_remove_item(int room_id, int item_id) {
 void room_add_npc(int room_id, int npc_id) {
     Room* room = room_get(room_id);
     if (!room || room->npc_ids.size() >= MAX_NPC_PER_ROOM) return;
+    // 记录归属房间，供妖兽击杀后 3 天刷新归位
+    NPC* n = npc_get(npc_id);
+    if (n) n->home_room = room_id;
     room->npc_ids.push_back(npc_id);
 }
 
