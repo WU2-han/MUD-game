@@ -124,27 +124,32 @@ bool player_try_breakthrough(Player* player) {
             player->stage = RealmStage::EARLY;
             printf("\n====== 突破！======\n");
             printf("你成功突破至【%s】！\n", realm_name(player->realm));
-            printf("宗门地位晋升为【%s】！\n", sect_rank_name(player->realm));
-            printf("====================\n\n");
 
-            if (player->realm == RealmLevel::NASCENT_SOUL) {
-                printf("依门规，你晋升为内门执事，可向长老呈报边境战事。\n");
+            // 宗门地位晋升：炼气→外门、元婴及以上→自动；筑基/金丹需通过考核（三改意见）
+            if (player->realm == RealmLevel::QI_REFINE) {
+                if (player->sect_rank < 1) player->sect_rank = 1;
+                printf("宗门地位晋升为【%s】！\n", sect_rank_name_idx(player->sect_rank));
+            } else if (player->realm == RealmLevel::FOUNDATION) {
+                printf("你已达筑基期，可前往淬体演武场输入 kaohe 参加内门考核，晋升【内门弟子】。\n");
+            } else if (player->realm == RealmLevel::GOLDEN_CORE) {
+                printf("你已达金丹期，可前往淬体演武场输入 kaohe 参加亲传考核，晋升【亲传弟子】。\n");
+            } else {
+                // 元婴及以上：自动晋升对应地位
+                int new_rank = static_cast<int>(player->realm);
+                if (player->sect_rank < new_rank) player->sect_rank = new_rank;
+                printf("宗门地位晋升为【%s】！\n", sect_rank_name_idx(player->sect_rank));
+                if (player->realm == RealmLevel::NASCENT_SOUL)
+                    printf("依门规，你晋升为内门执事，可向长老呈报边境战事。\n");
+                else if (player->realm == RealmLevel::SPIRIT_TRANS)
+                    printf("宗门封你为核心长老，执掌一方要务。\n");
+                else if (player->realm == RealmLevel::VOID_REFINE)
+                    printf("你荣升为一峰之主，坐镇宗门要冲。\n");
+                else if (player->realm == RealmLevel::MERGE_ALIGN)
+                    printf("你已成为宗主候选/准宗主，宗门威望与日俱增。\n");
+                else if (player->realm == RealmLevel::MAHAYANA)
+                    printf("宗门上下皆望你执掌大权。\n");
             }
-            if (player->realm == RealmLevel::SPIRIT_TRANS) {
-                printf("宗门封你为核心长老，执掌一方要务。\n");
-            }
-            if (player->realm == RealmLevel::VOID_REFINE) {
-                printf("你荣升为一峰之主，坐镇宗门要冲。\n");
-            }
-            if (player->realm == RealmLevel::MERGE_ALIGN) {
-                printf("你已成为宗主候选/准宗主，宗门威望与日俱增。\n");
-            }
-            if (player->realm == RealmLevel::MAHAYANA) {
-                printf("宗门上下皆望你执掌大权。\n");
-            }
-            if (player->realm == RealmLevel::TRANSCENDENT) {
-                printf("你勘破大道，踏入渡劫飞升之境！\n");
-            }
+            printf("====================\n\n");
 
             event_emit(EventType::PLAYER_LEVEL_UP, player, nullptr);
         } else {
@@ -288,10 +293,13 @@ bool player_use_item(Player* player, int slot) {
             player->wu += it.wu_bonus;
             player->spd += spd_gain;
         } else if (group == 6) {
-            // 精工丹：熟练度
-            printf("你服用了一颗%s精工丹，四艺熟练度+%d。\n",
+            // 精工丹：四艺熟练度各+（四改意见：四艺拆分，通用奖励四艺各加等量）
+            printf("你服用了一颗%s精工丹，四艺熟练度各+%d。\n",
                    pill_grade_name(it.grade), it.prof_bonus);
-            player->prof += it.prof_bonus;
+            player->prof_alchemy  = std::min(10000, player->prof_alchemy  + it.prof_bonus);
+            player->prof_forge    = std::min(10000, player->prof_forge    + it.prof_bonus);
+            player->prof_talisman = std::min(10000, player->prof_talisman + it.prof_bonus);
+            player->prof_beast    = std::min(10000, player->prof_beast    + it.prof_bonus);
         } else if (group == 2) {
             // 聚气丹：恢复灵力(MP)百分比
             int mp_gain = (int)(player->max_mp * ((float)it.mp_bonus / 100.0f));

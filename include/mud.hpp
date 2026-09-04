@@ -238,7 +238,10 @@ struct Player {
     int spd = 10;             // 速度
     int stam = 100;           // 精力
     int max_stam = 100;       // 精力上限
-    int prof = 0;             // 四艺熟练度
+    int prof_alchemy = 0;     // 四艺熟练度·炼丹
+    int prof_forge = 0;       // 四艺熟练度·炼器
+    int prof_talisman = 0;    // 四艺熟练度·画符
+    int prof_beast = 0;       // 四艺熟练度·御兽
     int day = 1;              // 游戏天数
 
     // ---- V2.0 每日/防御性 ----
@@ -255,6 +258,7 @@ struct Player {
 
     // ---- 宗门 ----
     int sect_id = -1;         // 宗门ID
+    int sect_rank = 0;        // 宗门地位（0杂役~9太上长老，独立于境界，靠考核晋升）
     int prestige = 0;         // 宗门威望（第八章门宣称达标）
 
     // ---- 主线剧情 ----
@@ -342,6 +346,80 @@ inline const char* dir_cn_name(Direction dir) {
     return (idx >= 0 && idx < 6) ? names[idx] : "未知";
 }
 
+// 方向对应的移动键位（WASD 布局：W↑北  S↓南  A←西  D→东，U上楼，down下楼）
+inline const char* dir_key_name(Direction dir) {
+    static const char* names[] = { "W", "S", "D", "A", "U", "down" };
+    int idx = static_cast<int>(dir);
+    return (idx >= 0 && idx < 6) ? names[idx] : "?";
+}
+
+// ===== 终端显示宽度工具 =====
+// 中文/全角字符占 2 列，ASCII 占 1 列；用于对齐带中文的框线（printf %-Ns 按字节对齐会错位）。
+
+inline int display_width(const std::string& s) {
+    int w = 0;
+    size_t i = 0;
+    while (i < s.size()) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c < 0x80) {
+            w += 1;
+            i += 1;
+        } else {
+            int len = 1;
+            if ((c & 0xE0) == 0xC0) len = 2;
+            else if ((c & 0xF0) == 0xE0) len = 3;
+            else if ((c & 0xF8) == 0xF0) len = 4;
+            w += 2;
+            i += len;
+        }
+    }
+    return w;
+}
+
+// 把字符串补齐到指定显示宽度（不足用空格补）
+inline std::string pad_to_width(const std::string& s, int width) {
+    int w = display_width(s);
+    if (w >= width) return s;
+    return s + std::string(static_cast<size_t>(width - w), ' ');
+}
+
+// 重复拼接一个 UTF-8 字符串（用于绘制框线，避免多字节字符被 char 截断）
+inline std::string box_rep(const char* s, int n) {
+    std::string r;
+    for (int i = 0; i < n; i++) r += s;
+    return r;
+}
+
+// 按显示宽度把文本切分成多行，不会从 UTF-8 字符中间截断
+inline std::vector<std::string> wrap_text_by_width(const std::string& s, int width) {
+    std::vector<std::string> lines;
+    std::string cur;
+    int cur_w = 0;
+    size_t i = 0;
+    while (i < s.size()) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        int len = 1;
+        int cw = 1;
+        if (c >= 0x80) {
+            cw = 2;
+            if ((c & 0xE0) == 0xC0) len = 2;
+            else if ((c & 0xF0) == 0xE0) len = 3;
+            else if ((c & 0xF8) == 0xF0) len = 4;
+        }
+        std::string ch = s.substr(i, len);
+        if (cur_w + cw > width && !cur.empty()) {
+            lines.push_back(cur);
+            cur.clear();
+            cur_w = 0;
+        }
+        cur += ch;
+        cur_w += cw;
+        i += len;
+    }
+    if (!cur.empty()) lines.push_back(cur);
+    return lines;
+}
+
 inline Direction dir_reverse(Direction dir) {
     static const Direction rev[] = {
         Direction::SOUTH, Direction::NORTH, Direction::WEST,
@@ -372,6 +450,26 @@ inline const char* sect_rank_name(RealmLevel realm) {
     };
     int idx = static_cast<int>(realm);
     return (idx >= 0 && idx < 10) ? names[idx] : "未知";
+}
+
+// 宗门地位独立档位（0杂役~9太上长老）的名称/月例，供考核晋升后的显示与发放使用
+inline const char* sect_rank_name_idx(int rank) {
+    static const char* names[] = {
+        "杂役", "外门弟子", "内门弟子", "亲传弟子", "内门执事",
+        "核心长老", "峰主", "宗主候选", "宗主", "太上长老"
+    };
+    return (rank >= 0 && rank < 10) ? names[rank] : "未知";
+}
+
+inline int sect_rank_salary(int rank) {
+    static const int salary[] = { 0, 500, 1000, 1500, 2000, 3000, 4000, 4500, 5000, 10000 };
+    return (rank >= 0 && rank < 10) ? salary[rank] : 0;
+}
+
+// 四艺熟练度最高值（用于亲传考核「任一四艺≥1000」等门槛）
+inline int prof_max(const Player* p) {
+    return std::max(std::max(p->prof_alchemy, p->prof_forge),
+                    std::max(p->prof_talisman, p->prof_beast));
 }
 
 inline int realm_monthly_salary(RealmLevel realm) {

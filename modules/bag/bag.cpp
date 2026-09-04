@@ -169,19 +169,25 @@ static void cmd_shop(Player* player, const std::string& args) {
         return;
     }
 
-    printf("\n╔══════════ 藏宝阁商店 ══════════╗\n");
-    printf("║ 你的灵石: %-18d ║\n", player->gold);
-    printf("╠════════════════════════════════╣\n");
-    printf("║ 编号  物品             价格   ║\n");
+    const int W = 34;   // 内容区显示宽度
+    auto line = [&](const std::string& s) { printf("║ %s ║\n", pad_to_width(s, W).c_str()); };
+    auto hr   = [&](const char* l, const char* r) { printf("%s%s%s\n", l, box_rep("═", W + 2).c_str(), r); };
+
+    printf("\n");
+    hr("╔", "╗");
+    line("藏宝阁商店");
+    hr("╠", "╣");
+    line("你的灵石: " + std::to_string(player->gold));
+    hr("╠", "╣");
+    line(pad_to_width("编号  物品", 26) + "价格");
     for (size_t i = 0; i < g_shop_items.size(); i++) {
         auto& si = g_shop_items[i];
         Item* tmpl = item_get(si.item_id);
-        if (tmpl) {
-            printf("║ [%d]  %-14s %-8d ║\n",
-                   (int)(i + 1), tmpl->name.c_str(), si.price);
-        }
+        if (!tmpl) continue;
+        std::string row = "[" + std::to_string(i + 1) + "] " + tmpl->name;
+        line(pad_to_width(row, 26) + std::to_string(si.price));
     }
-    printf("╚════════════════════════════════╝\n");
+    hr("╚", "╝");
     printf("使用 buy <编号> 购买，sell <背包编号> 出售\n");
     printf("（药渣可按10灵石/个出售给钱掌柜）\n\n");
 }

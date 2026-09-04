@@ -53,6 +53,7 @@ bool save_player(Player* player) {
     fp << "  \"gold\": " << player->gold << ",\n";
     fp << "  \"current_room_id\": " << player->current_room_id << ",\n";
     fp << "  \"sect_id\": " << player->sect_id << ",\n";
+    fp << "  \"sect_rank\": " << player->sect_rank << ",\n";
     fp << "  \"disciple_count\": " << player->disciple_count << ",\n";
 
     // ---- V2.0 核心/每日/灵兽/剧情 ----
@@ -62,7 +63,10 @@ bool save_player(Player* player) {
     fp << "  \"spd\": " << player->spd << ",\n";
     fp << "  \"stam\": " << player->stam << ",\n";
     fp << "  \"max_stam\": " << player->max_stam << ",\n";
-    fp << "  \"prof\": " << player->prof << ",\n";
+    fp << "  \"prof_alchemy\": " << player->prof_alchemy << ",\n";
+    fp << "  \"prof_forge\": " << player->prof_forge << ",\n";
+    fp << "  \"prof_talisman\": " << player->prof_talisman << ",\n";
+    fp << "  \"prof_beast\": " << player->prof_beast << ",\n";
     fp << "  \"day\": " << player->day << ",\n";
     fp << "  \"pill_today\": " << player->pill_today << ",\n";
     fp << "  \"rested_today\": " << (player->rested_today ? 1 : 0) << ",\n";
@@ -195,6 +199,7 @@ Player* load_player(const std::string& name) {
                         else if (k == "gold") p->gold = num;
                         else if (k == "current_room_id") p->current_room_id = num;
                         else if (k == "sect_id") p->sect_id = num;
+                        else if (k == "sect_rank") p->sect_rank = num;
                         else if (k == "disciple_count") p->disciple_count = num;
                         // V2.0 字段
                         else if (k == "con") p->con = num;
@@ -203,7 +208,13 @@ Player* load_player(const std::string& name) {
                         else if (k == "spd") p->spd = num;
                         else if (k == "stam") p->stam = num;
                         else if (k == "max_stam") p->max_stam = num;
-                        else if (k == "prof") p->prof = num;
+                        else if (k == "prof_alchemy") p->prof_alchemy = num;
+                        else if (k == "prof_forge") p->prof_forge = num;
+                        else if (k == "prof_talisman") p->prof_talisman = num;
+                        else if (k == "prof_beast") p->prof_beast = num;
+                        else if (k == "prof") {  // 旧存档兼容：单一四艺熟练度均分到四艺
+                            p->prof_alchemy = p->prof_forge = p->prof_talisman = p->prof_beast = num;
+                        }
                         else if (k == "day") p->day = num;
                         else if (k == "pill_today") p->pill_today = num;
                         else if (k == "rested_today") p->rested_today = (num != 0);

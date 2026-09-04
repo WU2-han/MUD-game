@@ -28,6 +28,25 @@ static void cmd_help(Player* player, const std::string& args) {
     cmd_show_all(player);
 }
 
+// 各房间可执行的主要动作提示（仅功能性指令，不剧透剧情）
+static const char* room_action_hints(int room_id) {
+    switch (room_id) {
+        case 1: return "修炼(train) 休息(rest) 睡觉(sleep) 回家(home)";
+        case 2: return "睡觉(sleep)";
+        case 3: return "修炼(train)";
+        case 4: return "商店(shop) 购买(buy) 出售(sell)";
+        case 5: return "淬体(cuti) 考核(kaohe) 战斗(fight)";
+        case 6: return "炼丹(alchemy) 炼器(forge) 画符(talisman) 合成(combine)";
+        case 7: return "查看灵兽(beast) 契约(contract)";
+        case 8: return "月例(monthly)";
+        case 9: case 10: case 11: case 12:
+        case 18: case 20: case 22: return "战斗(fight)";
+        case 13: case 14: case 15: case 16: case 17:
+        case 19: case 21: case 23: case 24: return "剧情(story)";
+        default: return nullptr;
+    }
+}
+
 static void cmd_look(Player* player, const std::string& args) {
     (void)args;
     Room* room = room_get(player->current_room_id);
@@ -36,71 +55,90 @@ static void cmd_look(Player* player, const std::string& args) {
         return;
     }
 
-    printf("\n┌──────────────────────────────────┐\n");
-    printf("│ %-32s │\n", room->name.c_str());
-    printf("├──────────────────────────────────┤\n");
-
-    // 描述自动换行
-    std::string desc = room->desc;
-    size_t pos = 0;
-    while (pos < desc.size()) {
-        size_t len = std::min(desc.size() - pos, size_t(32));
-        printf("│ %-32s │\n", desc.substr(pos, len).c_str());
-        pos += len;
-    }
-
-    printf("├──────────────────────────────────┤\n");
-
-    // 出口
-    printf("│ 出口: ");
-    bool has_exit = false;
-    for (int d = 0; d < 6; d++) {
-        if (room->exits[d].room_id > 0) {
-            Room* dest = room_get(room->exits[d].room_id);
-            if (dest) {
-                if (has_exit) printf(", ");
-                printf("%s(%s)", dir_cn_name(static_cast<Direction>(d)), dest->name.c_str());
-                if (room->exits[d].locked)
-                    printf("[需%s]", realm_name(room->exits[d].req_realm));
-                has_exit = true;
-            }
+    const int W = 34;   // 内容区显示宽度
+    auto hr = [&](const char* left, const char* right, int w) {
+        printf("%s%s%s\n", left, box_rep("─", w).c_str(), right);
+    };
+    auto field = [&](const std::string& label, const std::string& value) {
+        std::string line = label + value;
+        for (auto& ln : wrap_text_by_width(line, W)) {
+            printf("│ %s │\n", pad_to_width(ln, W).c_str());
         }
-    }
-    if (!has_exit) printf("无");
-    printf("\n");
+    };
 
-    // NPC
-    if (!room->npc_ids.empty()) {
-        printf("│ NPC: ");
+    printf("\n");
+    hr("┌", "┐", W + 2);
+    printf("│ %s │\n", pad_to_width(room->name, W).c_str());
+    hr("├", "┤", W + 2);
+    for (auto& ln : wrap_text_by_width(room->desc, W)) {
+        printf("│ %s │\n", pad_to_width(ln, W).c_str());
+    }
+    hr("├", "┤", W + 2);
+
+    // 出口（带方向键）
+    {
+        std::string exits;
+        bool has_exit = false;
+        for (int d = 0; d < 6; d++) {
+            if (room->exits[d].room_id <= 0) continue;
+            Room* dest = room_get(room->exits[d].room_id);
+            if (!dest) continue;
+            if (has_exit) exits += "  ";
+            exits += std::string(dir_cn_name(static_cast<Direction>(d))) + "["
+                   + dir_key_name(static_cast<Direction>(d)) + "] " + dest->name;
+            if (room->exits[d].locked)
+                exits += std::string("[需") + realm_name(room->exits[d].req_realm) + "]";
+            has_exit = true;
+        }
+        field("出口: ", has_exit ? exits : "无");
+    }
+
+    // NPC：分为「可对话」与「可攻击」两栏（三改意见：look 页面需明确区分）
+    {
+        std::string talkable, attackable;
         for (int npc_id : room->npc_ids) {
             NPC* npc = npc_get(npc_id);
-            if (npc && npc->is_alive) {
-                printf("%s  ", npc->name.c_str());
-            }
+            if (!npc || !npc->is_alive) continue;
+            std::string& target = (npc->type == NPCType::MONSTER) ? attackable : talkable;
+            if (!target.empty()) target += "  ";
+            target += npc->name;
         }
-        printf("\n");
+        if (!talkable.empty())   field("可对话: ", talkable);
+        if (!attackable.empty()) field("可攻击: ", attackable);
     }
 
     // 道具
     if (!room->item_ids.empty()) {
-        printf("│ 物品: ");
+        std::string items;
         for (int item_id : room->item_ids) {
             Item* it = item_get(item_id);
-            if (it) printf("%s  ", it->name.c_str());
+            if (it) {
+                if (!items.empty()) items += "  ";
+                items += it->name;
+            }
         }
-        printf("\n");
+        if (!items.empty()) field("物品: ", items);
     }
 
-    printf("└──────────────────────────────────┘\n\n");
+    // 此处可执行的操作
+    const char* hints = room_action_hints(player->current_room_id);
+    if (hints) {
+        hr("├", "┤", W + 2);
+        field("你在此可: ", hints);
+    }
+
+    hr("└", "┘", W + 2);
+    printf("\n");
 }
 
 static bool parse_dir(const std::string& s, Direction& dir) {
-    if      (s == "north" || s == "n") dir = Direction::NORTH;
+    // WASD 键位：W↑北  S↓南  A←西  D→东（同时保留全称 north/south/east/west/up/down）
+    if      (s == "north" || s == "w") dir = Direction::NORTH;
     else if (s == "south" || s == "s") dir = Direction::SOUTH;
-    else if (s == "east"  || s == "e") dir = Direction::EAST;
-    else if (s == "west"  || s == "w") dir = Direction::WEST;
+    else if (s == "west"  || s == "a") dir = Direction::WEST;
+    else if (s == "east"  || s == "d") dir = Direction::EAST;
     else if (s == "up"    || s == "u") dir = Direction::UP;
-    else if (s == "down"  || s == "d") dir = Direction::DOWN;
+    else if (s == "down")              dir = Direction::DOWN;
     else return false;
     return true;
 }
@@ -126,68 +164,71 @@ static void do_move_dir(Player* player, Direction dir) {
 static void cmd_move(Player* player, const std::string& args) {
     Direction dir;
     if (!parse_dir(args, dir)) {
-        printf("方向: n/s/e/w/u/d 或 north/south/east/west/up/down\n");
+        printf("方向: w/s/a/d/u/down 或 north/south/east/west/up/down\n");
         return;
     }
     do_move_dir(player, dir);
 }
 
-// 单键方向命令：直接输入 n/s/e/w/u/d 即可移动
-static void cmd_go_n(Player* p, const std::string& a) { (void)a; do_move_dir(p, Direction::NORTH); }
-static void cmd_go_s(Player* p, const std::string& a) { (void)a; do_move_dir(p, Direction::SOUTH); }
-static void cmd_go_e(Player* p, const std::string& a) { (void)a; do_move_dir(p, Direction::EAST); }
-static void cmd_go_w(Player* p, const std::string& a) { (void)a; do_move_dir(p, Direction::WEST); }
-static void cmd_go_u(Player* p, const std::string& a) { (void)a; do_move_dir(p, Direction::UP); }
-static void cmd_go_d(Player* p, const std::string& a) { (void)a; do_move_dir(p, Direction::DOWN); }
+// 单键方向命令（WASD：w/s/a/d 对应 北/南/西/东，u 上楼，down 下楼）
+static void cmd_go_north(Player* p, const std::string& a) { (void)a; do_move_dir(p, Direction::NORTH); }
+static void cmd_go_south(Player* p, const std::string& a) { (void)a; do_move_dir(p, Direction::SOUTH); }
+static void cmd_go_east(Player* p, const std::string& a)  { (void)a; do_move_dir(p, Direction::EAST); }
+static void cmd_go_west(Player* p, const std::string& a)  { (void)a; do_move_dir(p, Direction::WEST); }
+static void cmd_go_up(Player* p, const std::string& a)    { (void)a; do_move_dir(p, Direction::UP); }
+static void cmd_go_down(Player* p, const std::string& a)  { (void)a; do_move_dir(p, Direction::DOWN); }
 
 static void cmd_status(Player* player, const std::string& args) {
     (void)args;
-    printf("\n╔══════════ 修仙者信息 ══════════╗\n");
-    printf("║ 姓名: %-24s ║\n", player->name.c_str());
-    printf("║ 灵根: %-24s ║\n", spirit_name(player->spirit_root));
-    printf("║ 境界: %s%-22s ║\n",
-           realm_name(player->realm), stage_name(player->stage));
-    printf("║ 修为: %d / %-17d ║\n", player->exp, player->exp_to_next);
-    printf("║ HP: %-4d  MP: %-4d  灵石: %-6d ║\n",
-           player->hp, player->mp, player->gold);
-    printf("║ 攻击: %-4d  防御: %-4d         ║\n",
-           player->atk, player->def);
-    printf("║ 体质: %-4d 灵力: %-4d 悟性: %-4d ║\n",
-           player->con, player->spi, player->wu);
-    printf("║ 速度: %-4d 精力: %-4d/%-4d       ║\n",
-           player->spd, player->stam, player->max_stam);
-    printf("║ 四艺熟练度: %-4d/10000  游戏第%d天 ║\n",
-           player->prof, player->day);
-    printf("║ 宗门地位: %s             ║\n", sect_rank_name(player->realm));
-    if (!player->title.empty()) printf("║ 称号: %s                   ║\n", player->title.c_str());
-    if (player->prestige > 0)   printf("║ 宗门威望: %-6d               ║\n", player->prestige);
-    if (player->beast_id > 0) {
-        printf("║ 灵兽: 品级%d  攻+%d                 ║\n",
-               static_cast<int>(player->beast_grade), player->beast_atk);
-    }
-    printf("╠════════════════════════════════╣\n");
+    const int W = 34;   // 内容区显示宽度
+    auto line = [&](const std::string& s) { printf("║ %s ║\n", pad_to_width(s, W).c_str()); };
+    auto bar = [&]() { printf("╠%s╣\n", box_rep("═", W + 2).c_str()); };
 
-    // 背包
-    printf("║ 背包 (%d/%d):\n", (int)player->inventory.size(), MAX_INV_SLOTS);
+    printf("\n╔%s╗\n", box_rep("═", W + 2).c_str());
+    line("修仙者信息");
+    bar();
+    line("姓名: " + player->name);
+    line("灵根: " + std::string(spirit_name(player->spirit_root)));
+    line("境界: " + std::string(realm_name(player->realm)) + stage_name(player->stage));
+    line("修为: " + std::to_string(player->exp) + " / " + std::to_string(player->exp_to_next));
+    line("HP: " + std::to_string(player->hp) + "  MP: " + std::to_string(player->mp) +
+         "  灵石: " + std::to_string(player->gold));
+    line("攻击: " + std::to_string(player->atk) + "  防御: " + std::to_string(player->def));
+    line("体质: " + std::to_string(player->con) + "  灵力: " + std::to_string(player->spi) +
+         "  悟性: " + std::to_string(player->wu));
+    line("速度: " + std::to_string(player->spd) + "  精力: " + std::to_string(player->stam) +
+         "/" + std::to_string(player->max_stam));
+    line("炼丹: " + std::to_string(player->prof_alchemy) +
+         "  炼器: " + std::to_string(player->prof_forge));
+    line("画符: " + std::to_string(player->prof_talisman) +
+         "  御兽: " + std::to_string(player->prof_beast) + "  第" + std::to_string(player->day) + "天");
+    line("宗门地位: " + std::string(sect_rank_name_idx(player->sect_rank)));
+    if (!player->title.empty()) line("称号: " + player->title);
+    if (player->prestige > 0)   line("威望: " + std::to_string(player->prestige));
+    if (player->beast_id > 0)
+        line("灵兽: 品级" + std::to_string(static_cast<int>(player->beast_grade)) +
+             "  攻+" + std::to_string(player->beast_atk));
+    bar();
+
+    line("背包 (" + std::to_string(player->inventory.size()) + "/" +
+         std::to_string(MAX_INV_SLOTS) + ")");
     for (size_t i = 0; i < player->inventory.size(); i++) {
         auto& it = player->inventory[i];
-        printf("║  [%d] %s", (int)(i + 1), it.name.c_str());
-        if (it.stackable && it.quantity > 1)
-            printf(" x%d", it.quantity);
-        printf("\n");
+        std::string s = "[" + std::to_string(i + 1) + "] " + it.name;
+        if (it.stackable && it.quantity > 1) s += " x" + std::to_string(it.quantity);
+        line(s);
     }
-    if (player->inventory.empty()) printf("║  (空)\n");
+    if (player->inventory.empty()) line("(空)");
 
-    printf("╠════════════════════════════════╣\n");
+    bar();
 
-    // 技能
-    printf("║ 技能 (%d/%d):\n", (int)player->skills.size(), MAX_SKILL_SLOTS);
-    for (size_t i = 0; i < player->skills.size(); i++) {
-        printf("║  %s Lv.%d\n", player->skills[i].name.c_str(), player->skills[i].level);
-    }
-    if (player->skills.empty()) printf("║  (无)\n");
+    line("技能 (" + std::to_string(player->skills.size()) + "/" +
+         std::to_string(MAX_SKILL_SLOTS) + ")");
+    for (auto& sk : player->skills)
+        line(" " + sk.name + " Lv." + std::to_string(sk.level));
+    if (player->skills.empty()) line("(无)");
 
-    printf("╚════════════════════════════════╝\n\n");
+    printf("╚%s╝\n\n", box_rep("═", W + 2).c_str());
 }
 
 static void cmd_save(Player* player, const std::string& args) {
@@ -207,18 +248,38 @@ static void cmd_breakthrough(Player* player, const std::string& args) {
     player_try_breakthrough(player);
 }
 
-static void cmd_meditate(Player* player, const std::string& args) {
+static void cmd_home(Player* player, const std::string& args) {
     (void)args;
+    if (player->in_combat) {
+        printf("你正在战斗中，无法脱身回府！\n");
+        return;
+    }
+    if (player->current_room_id == 1) {
+        printf("你已经在个人主页了。\n");
+        return;
+    }
+    // 快捷键传送回个人主页（三改意见）
+    player_move_to(player, 1);
+    cmd_look(player, "");
+}
+
+static void cmd_train(Player* player, const std::string& args) {
+    (void)args;
+    // 修炼位置限制：只能在传功讲堂(3)或个人主页(1)打坐
+    if (player->current_room_id != 1 && player->current_room_id != 3) {
+        printf("此处不宜修炼，只有传功讲堂或个人主页才能安心打坐。\n");
+        return;
+    }
     // 打坐修炼消耗精力（每日精力有限，需休息/养神丹补充，防无限爆肝）
     if (player->stam < 10) {
         printf("精力不足（需10），难以入定。可回家休息(rest)、服用养神丹恢复。\n");
         return;
     }
     player->stam -= 10;
-    // 打坐恢复 + 获得少量修为
+    // 修炼恢复 + 修为固定 +20（三改意见）
     int hp_gain = player->max_hp / 10 + 10;
     int mp_gain = player->max_mp / 5 + 5;
-    int exp_gain = 10 + static_cast<int>(player->realm) * 5;
+    int exp_gain = 20;
 
     player->hp = std::min(player->hp + hp_gain, player->max_hp);
     player->mp = std::min(player->mp + mp_gain, player->max_mp);
@@ -230,19 +291,148 @@ static void cmd_meditate(Player* player, const std::string& args) {
            player->exp, player->exp_to_next, player->stam, player->max_stam);
 }
 
+// ===== 常驻功能NPC的互动提示 =====
+static const char* npc_interact_hint(const NPC* npc) {
+    if (!npc) return nullptr;
+    const std::string& n = npc->name;
+    if (n == "钱掌柜") return "可 shop 查看商店、buy 购买、sell 出售。";
+    if (n == "墨长老") return "可在此 train 打坐修炼。";
+    if (n == "铁武师") return "可 cuti 淬体提升体质、kaohe 发起晋升考核。";
+    if (n == "苏玄")   return "可 alchemy 炼丹、forge 炼器、talisman 画符。";
+    if (n == "老猎户") return "可 beast 查看灵兽、contract 契约灵兽。";
+    if (n == "李执事") return "可 monthly 领取月例。";
+    if (n == "林婉儿") return "她擅长炼丹，常免费炼制低阶丹药。";
+    return nullptr;
+}
+
+// 主线前铺垫台词（欲抑先扬）：达到亲传弟子、且尚未推进到揭穿墨阳子的剧情时触发
+static const char* npc_foreshadow_line(const NPC* npc) {
+    if (!npc) return nullptr;
+    const std::string& n = npc->name;
+    if (n == "墨长老")
+        return "当年老朽修为滞涩，是墨阳宗主无偿赠予我《纯阳悟道札记》，才得以突破瓶颈。此人心怀坦荡，毫无门户之见，实乃正道表率。";
+    if (n == "铁武师")
+        return "俺当年在妖兽山脉被三阶妖兽围杀，眼看就要没命，是墨阳宗主路过一剑斩了妖兽，还扔给俺一瓶上品养神丹。人家堂堂一宗之主，对俺个外门弟子都这么仗义！";
+    if (n == "苏玄")
+        return "上月墨阳宗主还遣人送来玄阳宗独家的《聚火丹方》，与我互补丹道心得。他与宗主是八拜之交，两宗向来亲如一家。";
+    if (n == "钱掌柜")
+        return "玄阳宗的商队最是公道，从不压价，墨阳宗主还特意下令，青云宗的货物一律加价一成收。要说正道里最讲情义的，非他莫属。";
+    if (n == "凌沧渊")
+        return "你墨阳师伯是为兄一生挚友，宅心仁厚，修为深不可测。日后若为师不在了，你遇着难处，大可去玄阳宗寻他。";
+    return nullptr;
+}
+
+// ===== 新手教程（奶龙）=====
+static void print_tutorial(Player* player) {
+    (void)player;
+    printf("\n══════════ 奶龙 · 新手教程 ══════════\n");
+    printf("奶龙扑棱着翅膀，热心地给你讲起修仙入门：\n\n");
+
+    printf("【基础指令】\n");
+    printf("  help        查看所有命令\n");
+    printf("  look / l    查看当前房间（出口、可对话/可攻击NPC、你能做的事）\n");
+    printf("  status      查看自身状态\n");
+    printf("  home / h    直接传送回个人主页（战斗中不可用）\n");
+    printf("  save        保存游戏（记得经常存档！）\n\n");
+
+    printf("【修炼与突破】\n");
+    printf("  train       打坐修炼，修为+20（只能在传功讲堂或个人主页）\n");
+    printf("  breakthrough/bt  修为足够时突破境界\n");
+    printf("  精力不够时：先 rest 休息，再 sleep 进入下一天恢复\n\n");
+
+    printf("【主线剧情】\n");
+    printf("  story       查看当前主线进度与触发条件\n");
+    printf("  达到宗门地位「亲传弟子」后，输入 story 即可开启主线\n\n");
+
+    printf("【各境界能做什么】\n");
+    printf("  炼气期  外门弟子：妖兽山脉外围历练、学习四艺\n");
+    printf("  筑基期  可到演武场 kaohe 参加内门考核（挑战赵青峰）\n");
+    printf("  金丹期  可到演武场 kaohe 参加亲传考核（长老会审），开启主线\n");
+    printf("  元婴期  内门执事，可向长老呈报边境战事\n");
+    printf("  化神期  核心长老 / 炼虚期 峰主 / 合体期 宗主候选\n");
+    printf("  大乘期  宗主 / 渡劫飞升 太上长老\n\n");
+
+    printf("【NPC 与战斗】\n");
+    printf("  talk <名字> 与当前房间的NPC对话\n");
+    printf("  fight <名字> 与妖兽战斗\n");
+    printf("  可攻击NPC（妖兽，出没于妖兽山脉）：\n");
+    printf("    尖刺豪猪、腐爪灰狼 / 雾影毒蟒、岩甲巨熊 /\n");
+    printf("    烈焰魔猿 / 幻海魔蛟\n");
+    printf("  不可攻击（功能NPC，只可 talk）：钱掌柜、墨长老、\n");
+    printf("    铁武师、苏玄、老猎户、李执事\n\n");
+    printf("祝你在青云宗修行顺利！\n");
+    printf("══════════════════════════════════════\n\n");
+}
+
+static void cmd_talk(Player* player, const std::string& args) {
+    if (args.empty()) {
+        printf("用法: talk <NPC名字>（用 look 查看当前房间的NPC）\n");
+        return;
+    }
+    Room* room = room_get(player->current_room_id);
+    if (!room) return;
+
+    // 只能与当前房间的NPC互动
+    NPC* target = nullptr;
+    for (int npc_id : room->npc_ids) {
+        NPC* npc = npc_get(npc_id);
+        if (npc && npc->is_alive && npc->name.find(args) != std::string::npos) {
+            target = npc;
+            break;
+        }
+    }
+    if (!target) {
+        printf("这里没有叫「%s」的人，只能和当前房间的NPC对话。\n", args.c_str());
+        return;
+    }
+
+    if (target->name == "奶龙") {
+        print_tutorial(player);
+        return;
+    }
+
+    printf("\n【%s】%s\n", target->name.c_str(), target->desc.c_str());
+    // 主线前铺垫墨阳子（欲抑先扬）
+    const char* fore = (player->story_phase < 7)
+                       ? npc_foreshadow_line(target) : nullptr;
+    if (fore) {
+        printf("%s道：「%s」\n", target->name.c_str(), fore);
+    }
+    const char* hint = npc_interact_hint(target);
+    if (hint) {
+        printf("它对你说道：「%s」\n", hint);
+    } else if (target->type == NPCType::MONSTER) {
+        printf("它恶狠狠地盯着你，看起来可以 fight 与之战斗。\n");
+    }
+    printf("\n");
+}
+
 static void cmd_inventory(Player* player, const std::string& args) {
     (void)args;
-    printf("\n========== 背包 (%d/%d) ==========\n",
-           (int)player->inventory.size(), MAX_INV_SLOTS);
-    for (size_t i = 0; i < player->inventory.size(); i++) {
-        auto& it = player->inventory[i];
-        printf("  [%d] %-20s", (int)(i + 1), it.name.c_str());
-        if (it.stackable && it.quantity > 1)
-            printf(" x%d", it.quantity);
-        printf(" - %s\n", it.desc.c_str());
+    const int W = 40;   // 内容区显示宽度
+    auto hr = [&](const char* left, const char* right, int w) {
+        printf("%s%s%s\n", left, box_rep("─", w).c_str(), right);
+    };
+    auto line = [&](const std::string& s) { printf("│ %s │\n", pad_to_width(s, W).c_str()); };
+
+    printf("\n");
+    hr("┌", "┐", W + 2);
+    line("背包 (" + std::to_string(player->inventory.size()) + "/" +
+         std::to_string(MAX_INV_SLOTS) + ")");
+    hr("├", "┤", W + 2);
+    if (player->inventory.empty()) {
+        line("(空)");
+    } else {
+        for (size_t i = 0; i < player->inventory.size(); i++) {
+            auto& it = player->inventory[i];
+            std::string s = "[" + std::to_string(i + 1) + "] " + it.name;
+            if (it.stackable && it.quantity > 1) s += " x" + std::to_string(it.quantity);
+            if (!it.desc.empty()) s += " - " + it.desc;
+            for (auto& ln : wrap_text_by_width(s, W)) line(ln);
+        }
     }
-    if (player->inventory.empty()) printf("  (空)\n");
-    printf("==================================\n\n");
+    hr("└", "┘", W + 2);
+    printf("\n");
 }
 
 static void cmd_get(Player* player, const std::string& args) {
@@ -531,13 +721,13 @@ static void init_game_data() {
     init_item_configure(it, 0, 0, 0, 0, 1500, 0, 0, 0, 0, 0, 0, false);
 
     // [精工丹：熟练度] 下/中/上/极
-    it = item_create_adv(321, "下品精工丹", "四艺熟练度+80", ItemType::PILL, 35, PillGrade::LOW, true);
+    it = item_create_adv(321, "下品精工丹", "四艺熟练度各+80", ItemType::PILL, 35, PillGrade::LOW, true);
     init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 80, false);
-    it = item_create_adv(322, "中品精工丹", "四艺熟练度+160", ItemType::PILL, 70, PillGrade::MID, true);
+    it = item_create_adv(322, "中品精工丹", "四艺熟练度各+160", ItemType::PILL, 70, PillGrade::MID, true);
     init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 160, false);
-    it = item_create_adv(323, "上品精工丹", "四艺熟练度+280", ItemType::PILL, 140, PillGrade::HIGH, true);
+    it = item_create_adv(323, "上品精工丹", "四艺熟练度各+280", ItemType::PILL, 140, PillGrade::HIGH, true);
     init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 280, false);
-    it = item_create_adv(324, "极品精工丹", "四艺熟练度+420", ItemType::PILL, 280, PillGrade::TOP, true);
+    it = item_create_adv(324, "极品精工丹", "四艺熟练度各+420", ItemType::PILL, 280, PillGrade::TOP, true);
     init_item_configure(it, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 420, false);
 
     // [法器（藏宝阁售价表）]
@@ -599,19 +789,21 @@ static void game_loop() {
 static void register_builtin_commands() {
     cmd_register("help",     {},       cmd_help,         "显示所有命令");
     cmd_register("look",     {"l"},    cmd_look,         "查看当前房间");
-    cmd_register("move",     {},             cmd_move, "移动 (move <n/s/e/w/u/d>)");
-    cmd_register("north",    {"n"},          cmd_go_n, "向北移动");
-    cmd_register("south",    {"s"},          cmd_go_s, "向南移动");
-    cmd_register("east",     {"e"},          cmd_go_e, "向东移动");
-    cmd_register("west",     {"w"},          cmd_go_w, "向西移动");
-    cmd_register("up",       {"u"},          cmd_go_u, "向上移动");
-    cmd_register("down",     {"d"},          cmd_go_d, "向下移动");
+    cmd_register("move",     {},             cmd_move, "移动 (move <w/s/a/d/u/down>)");
+    cmd_register("north",    {"w"},          cmd_go_north, "向北移动 (W)");
+    cmd_register("south",    {"s"},          cmd_go_south, "向南移动 (S)");
+    cmd_register("west",     {"a"},          cmd_go_west,  "向西移动 (A)");
+    cmd_register("east",     {"d"},          cmd_go_east,  "向东移动 (D)");
+    cmd_register("up",       {"u"},          cmd_go_up,    "向上移动 (U)");
+    cmd_register("down",     {},             cmd_go_down,  "向下移动 (down)");
     cmd_register("status",   {"stat", "me"}, cmd_status, "查看自身状态");
     cmd_register("save",     {},       cmd_save,         "保存游戏");
     cmd_register("quit",     {"exit"}, cmd_quit,         "退出游戏");
     cmd_register("load",     {},       nullptr,          "加载存档 (load <道号>)");
     cmd_register("breakthrough", {"bt"}, cmd_breakthrough, "尝试突破境界");
-    cmd_register("meditate", {"rest", "train"}, cmd_meditate, "打坐修炼");
+    cmd_register("train", {"dazuo"}, cmd_train, "打坐修炼，修为+20（传功讲堂/个人主页）");
+    cmd_register("home", {"h"}, cmd_home, "传送回个人主页 (home)");
+    cmd_register("talk",     {"liaotian", "chat"}, cmd_talk, "与当前房间NPC对话 (talk <名字>)");
     cmd_register("inventory", {"i", "bag"}, cmd_inventory, "查看背包");
     cmd_register("get",      {"pick"}, cmd_get,          "拾取物品 (get <名称/编号>)");
     cmd_register("drop",     {},       cmd_drop,         "丢弃物品 (drop <背包编号>)");

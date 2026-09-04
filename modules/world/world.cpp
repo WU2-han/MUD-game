@@ -76,6 +76,9 @@ enum NpcId {
     NPC_CHU       = 302,   // 楚狂（妖兽山脉）
     NPC_LIN       = 303,   // 林婉儿（百艺阁）
     NPC_MENG      = 304,   // 孟野（灵兽囿）
+
+    // 新手引导 NPC
+    NPC_NAILONG   = 508,   // 奶龙（个人主页，新手教程）
 };
 
 // ===== 双向连接两个房间 =====
@@ -197,27 +200,37 @@ static void init_npcs() {
                1100, 85, 45, 0, 0, -1);
 
     // ---- 主线剧情 NPC ----
-    npc_create(501, "凌沧渊", "青云宗掌门，慈和仁厚。被墨阳子背刺身陨，主线核心人物。",
+    npc_create(501, "凌沧渊", "青云宗现任宗主，大乘期修为，丹武双绝，威严沉稳，眼光毒辣，极度护短。",
                NPCType::ELDER, RealmLevel::MAHAYANA, 20000, 500, 200, 0, 0, -1);
-    npc_create(502, "墨阳子", "传功堂长老，道貌岸然，实为修炼《纯阳噬灵功》的伪君子。", 
+    npc_create(502, "墨阳子", "玄阳宗宗主，凌沧渊八拜之交，温谦儒雅、乐善好施，是正道公认的仁厚宗主。",
                NPCType::ELDER, RealmLevel::MAHAYANA, 8000, 220, 90, 0, 0, -1);
-    npc_create(503, "魔月", "魔族圣子，亦正亦邪。坚信魔族从未毁约，与玩家联手促成和平。",
+    npc_create(503, "魔月", "魔族边境守将，性格爽直重诺，一直恪守仙魔和平条约。",
                NPCType::QUEST_GIVER, RealmLevel::VOID_REFINE, 9000, 380, 150, 0, 0, -1);
-    npc_create(504, "阿石", "落风谷山村的隐藏杂役，幸存的知情人。",
+    npc_create(504, "阿石", "边境村落的杂役，历经战乱后在此隐居。",
                NPCType::QUEST_GIVER, RealmLevel::QI_REFINE, 300, 20, 10, 0, 0, -1);
-    npc_create(505, "清玄子", "玄阳宗卧底的叛徒，为揭发墨阳子而遭追杀。",
+    npc_create(505, "清玄子", "一位避世隐居的道长，似有心事重重。",
                NPCType::QUEST_GIVER, RealmLevel::SPIRIT_TRANS, 6000, 280, 120, 0, 0, -1);
     npc_create(506, "黑衣死士", "玄阳宗派出的截杀刺客，争夺青云令。",
                NPCType::MONSTER, RealmLevel::SPIRIT_TRANS, 2400, 200, 60, 1200, 300, -1);
     npc_create(507, "巡逻妖将", "边境巡逻的妖怪将领，魔族下属。",
                NPCType::MONSTER, RealmLevel::NASCENT_SOUL, 1400, 160, 50, 900, 200, -1);
+
+    // ---- 新手引导 NPC：奶龙 ----
+    npc_create(NPC_NAILONG, "奶龙", "一只圆滚滚的小龙，会热心教你如何在宗门安身立命。",
+               NPCType::QUEST_GIVER, RealmLevel::MORTAL, 500, 5, 5, 0, 0, -1);
+
+    // ---- 晋升考核 NPC（四改意见：常驻演武场，由 kaohe 发起考核）----
+    npc_create(509, "赵青峰", "内门十大弟子之首，筑基期圆满，持有青锋灵剑。骄傲但公正，绝不手下留情。",
+               NPCType::MONSTER, RealmLevel::FOUNDATION, 420, 68, 30, 0, 0, -1);
+    npc_create(510, "金丹虚影", "三大长老以灵力凝聚的金丹期虚影，用于亲传考核最后一关。",
+               NPCType::MONSTER, RealmLevel::GOLDEN_CORE, 800, 120, 40, 0, 0, -1);
 }
 
 // ===== 初始化房间 =====
 static void init_rooms() {
     // 个人主页 / 住所区
     room_create(ROOM_HOME, "个人主页",
-        "你的住所。青瓦小院，灵气环绕，是你在这青云宗的安身之所。可在此修炼、休息、查看自身状态与宗门情况。");
+        "你的住所。青瓦小院，灵气环绕。可在此修炼、休息、查看自身状态与宗门情况。");
     room_create(ROOM_DISCIPLE, "弟子居所",
         "宗门弟子的居住区，院落错落有致。同门在此起居修行，萧辰等榜上人物亦在此闭关。");
 
@@ -249,65 +262,63 @@ static void init_rooms() {
     room_create(ROOM_STUDY, "宗主书房",
         "宗门重地，凌沧渊宗主深夜传召之地。案头灯影摇曳，机要卷宗堆积如山。");
     room_create(ROOM_WENJUAN, "大殿文卷室",
-        "宗门大殿之后的文卷重地，战报、账册尽数归档于此。李执事在此当值。");
+        "宗门大殿之后的文卷重地，战报、账册尽数归档于此。");
     room_create(ROOM_ZUSHI, "祖师堂",
-        "供奉青云宗历代祖师的庄严殿堂。灵位森森，香火缭绕，掌门遗体曾在此停灵。");
+        "供奉青云宗历代祖师的庄严殿堂。灵位森森，香火缭绕，庄严肃穆。");
     room_create(ROOM_DANDAO, "丹道长老居所",
-        "丹道长老的清修之地，药香弥漫，炉火不熄。可在此请验伤口灵力痕迹。");
+        "丹道长老的清修之地，药香弥漫，炉火不熄。");
     room_create(ROOM_MOUNT_SECRET, "妖兽山脉·秘洞",
-        "妖兽山脉深处的隐秘洞穴，被追杀的玄阳宗叛徒清玄子藏身于此。");
+        "妖兽山脉深处的隐秘洞穴，入口隐蔽，似有人迹。");
     room_create(ROOM_FALONG, "落风谷",
         "宗门之外的山谷要道，常年朔风呼啸，是前往边境战地的必经之路。");
     room_create(ROOM_FALONG_CUN, "落风谷山村",
-        "边境附近与世隔绝的小山村，劫后余生，瘢痕斑驳，隐藏着关键人证阿石。");
+        "边境附近与世隔绝的小山村，劫后余生，瘢痕斑驳。");
     room_create(ROOM_MILIN, "返宗密林",
-        "回程必经的密林，林深叶茂，潜伏着截杀的黑衣死士。");
+        "回程必经的密林，林深叶茂，气氛压抑。");
     room_create(ROOM_SHANMEN, "宗门山门",
         "云雾缭绕的青云宗山门，御兽长老率弟子镇守于此，戒备森严。");
     room_create(ROOM_PLAZA, "大殿广场",
-        "宗门大殿前的开阔广场，各派代表齐聚，正是揭穿伪君子墨阳子的最终战场。");
+        "宗门大殿前的开阔广场，是宗门集会、演武与重大仪典之地。");
     room_create(ROOM_BIANJING, "边境大营",
-        "正魔两族对峙的边境大营，魔军统帅魔月驻守于此，气氛肃杀。");
+        "正魔两族对峙的边境大营，气氛肃杀。");
     room_create(ROOM_DAVIDIAN, "宗门大典",
-        "新君登位的宗门大典现场，万仙来贺，三山五岳各大宗门观礼。");
+        "宗门举行大典的会场，万仙来贺，三山五岳各大宗门观礼。");
 
-    // ---- 双向出口（全场景互通）----
-    // 宗门大殿为中央枢纽
+    // ---- 双向出口（全场景互通，每个房间方向唯一、互不覆盖）----
+    // 宗门大殿为中央枢纽（6 个出口全部占用）
     link_rooms(ROOM_HALL, Direction::NORTH, ROOM_LECTURE);   // 大殿 ↔ 传功讲堂
     link_rooms(ROOM_HALL, Direction::EAST,  ROOM_TREASURY);  // 大殿 ↔ 藏宝阁
     link_rooms(ROOM_HALL, Direction::SOUTH, ROOM_HOME);      // 大殿 ↔ 个人主页
     link_rooms(ROOM_HALL, Direction::WEST,  ROOM_ARENA);     // 大殿 ↔ 淬体演武场
+    link_rooms(ROOM_HALL, Direction::UP,    ROOM_STUDY);     // 大殿 ↔ 宗主书房（上楼）
+    link_rooms(ROOM_HALL, Direction::DOWN,  ROOM_WENJUAN);   // 大殿 ↔ 大殿文卷室（下楼）
 
-    // 住所区
-    link_rooms(ROOM_HOME, Direction::SOUTH, ROOM_DISCIPLE);  // 个人主页 ↔ 弟子居所
+    // 住所区 → 弟子居所 → 宗门山门（出山要道）
+    link_rooms(ROOM_HOME,     Direction::SOUTH, ROOM_DISCIPLE);
+    link_rooms(ROOM_DISCIPLE, Direction::SOUTH, ROOM_SHANMEN);
 
-    // 修炼区
-    link_rooms(ROOM_ARENA, Direction::SOUTH, ROOM_ART);      // 淬体演武场 ↔ 百艺阁
-    link_rooms(ROOM_ART,   Direction::EAST,  ROOM_BEAST);    // 百艺阁 ↔ 灵兽囿
+    // 山门 → 大殿广场 → 返宗密林（主线出山路，大典在广场东侧）
+    link_rooms(ROOM_SHANMEN, Direction::SOUTH, ROOM_PLAZA);
+    link_rooms(ROOM_PLAZA,   Direction::EAST,  ROOM_DAVIDIAN);
+    link_rooms(ROOM_PLAZA,   Direction::SOUTH, ROOM_MILIN);
+
+    // 密林 → 落风谷 → 边境大营 / 落风谷山村
+    link_rooms(ROOM_MILIN,  Direction::SOUTH, ROOM_FALONG);
+    link_rooms(ROOM_FALONG, Direction::SOUTH, ROOM_BIANJING);
+    link_rooms(ROOM_FALONG, Direction::EAST,  ROOM_FALONG_CUN);
+
+    // 修炼区：演武场 → 百艺阁 → {灵兽囿, 丹道长老居所}
+    link_rooms(ROOM_ARENA,  Direction::SOUTH, ROOM_ART);
+    link_rooms(ROOM_ART,    Direction::EAST,  ROOM_BEAST);
+    link_rooms(ROOM_ART,    Direction::SOUTH, ROOM_DANDAO);
+    link_rooms(ROOM_DANDAO, Direction::EAST,  ROOM_ZUSHI);
 
     // 妖兽山脉（经灵兽囿进入，层层深入）
     link_rooms(ROOM_BEAST,      Direction::NORTH, ROOM_MOUNT_OUT);
     link_rooms(ROOM_MOUNT_OUT,  Direction::NORTH, ROOM_MOUNT_IN);
     link_rooms(ROOM_MOUNT_IN,   Direction::NORTH, ROOM_MOUNT_CORE);
     link_rooms(ROOM_MOUNT_CORE, Direction::NORTH, ROOM_MOUNT_FORB);
-
-    // ---- 主线场景通路 ----
-    // 宗门大殿 ↔ 宗主书房 / 大殿文卷室
-    link_rooms(ROOM_HALL, Direction::UP,   ROOM_STUDY);       // 大殿 → 上楼到书房
-    link_rooms(ROOM_HALL, Direction::DOWN, ROOM_WENJUAN);     // 大殿 → 下行到文卷室
-    // 丹道长老居所 ↔ 祖师堂（靠宗门大殿东侧相连）
-    link_rooms(ROOM_ART,   Direction::SOUTH, ROOM_DANDAO);
-    link_rooms(ROOM_DANDAO, Direction::NORTH, ROOM_ZUSHI);
-    // 灵兽囿/山脉 ↔ 秘洞
-    link_rooms(ROOM_MOUNT_CORE, Direction::EAST, ROOM_MOUNT_SECRET);
-    // 山门 ↔ 大殿（山门在宗门大殿之外）
-    link_rooms(ROOM_SHANMEN, Direction::SOUTH, ROOM_HALL);
-    link_rooms(ROOM_SHANMEN, Direction::NORTH, ROOM_MILIN);   // 山门 → 返宗密林
-    link_rooms(ROOM_MILIN,   Direction::NORTH, ROOM_FALONG);  // 密林 → 落风谷
-    link_rooms(ROOM_FALONG,  Direction::EAST,  ROOM_FALONG_CUN);
-    link_rooms(ROOM_FALONG,  Direction::NORTH, ROOM_BIANJING);// 落风谷 → 边境大营
-    link_rooms(ROOM_PLAZA,   Direction::NORTH, ROOM_HALL);    // 大殿广场 ↔ 大殿
-    link_rooms(ROOM_DAVIDIAN,Direction::SOUTH, ROOM_PLAZA);   // 大典 ↔ 广场
+    link_rooms(ROOM_MOUNT_CORE, Direction::EAST,  ROOM_MOUNT_SECRET);
 
     // ---- 境界锁（妖兽山脉四层 + 主线）----
     Room* r;
@@ -324,17 +335,57 @@ static void init_rooms() {
     Room* rfl = room_get(ROOM_MILIN); if (rfl) rfl->is_safe_zone = false;   // 返宗密林可战斗
     Room* rpl = room_get(ROOM_PLAZA); if (rpl) rpl->is_safe_zone = false;   // 广场BOSS战可战斗
     Room* rfg = room_get(ROOM_FALONG); if (rfg) rfg->is_safe_zone = false;  // 落风谷可战斗
+    Room* rar = room_get(ROOM_ARENA); if (rar) rar->is_safe_zone = false;   // 演武场：晋升考核1V1可战斗
+}
+
+// ===== 连通性校验：确保每个房间都能从出生点到达，避免玩家被困 =====
+static void verify_connectivity() {
+    std::set<int> visited;
+    std::vector<int> stack;
+    stack.push_back(ROOM_HOME);
+
+    while (!stack.empty()) {
+        int id = stack.back();
+        stack.pop_back();
+        if (visited.count(id)) continue;
+        visited.insert(id);
+
+        Room* r = room_get(id);
+        if (!r) continue;
+        for (int d = 0; d < 6; d++) {
+            int next = r->exits[d].room_id;
+            if (next > 0 && !visited.count(next)) stack.push_back(next);
+        }
+    }
+
+    bool ok = true;
+    for (auto& kv : room_get_all()) {
+        if (!visited.count(kv.first)) {
+            printf("[警告] 房间 %d(%s) 无法从出生点到达，存在被困风险！\n",
+                   kv.first, kv.second.name.c_str());
+            ok = false;
+        }
+    }
+    if (ok) {
+        printf("[模块C] 连通性校验通过：%d 个房间全部互通。\n",
+               static_cast<int>(room_get_all().size()));
+    }
 }
 
 // ===== 摆放 NPC =====
 static void place_npcs() {
     // 功能 NPC
+    room_add_npc(ROOM_HOME,     NPC_NAILONG); // 个人主页：奶龙（新手教程）
     room_add_npc(ROOM_TREASURY, NPC_QIAN);   // 藏宝阁：钱掌柜
     room_add_npc(ROOM_LECTURE,  NPC_MO);     // 传功讲堂：墨长老
     room_add_npc(ROOM_ARENA,    NPC_TIE);    // 淬体演武场：铁武师
     room_add_npc(ROOM_ART,      NPC_SU);     // 百艺阁：苏玄
     room_add_npc(ROOM_BEAST,    NPC_HUNTER); // 灵兽囿：老猎户
     room_add_npc(ROOM_HALL,     NPC_LI);     // 宗门大殿：李执事
+
+    // 晋升考核对手（四改意见：常驻演武场，由 kaohe 发起考核）
+    room_add_npc(ROOM_ARENA,    509);        // 淬体演武场：赵青峰（内门考核）
+    room_add_npc(ROOM_ARENA,    510);        // 淬体演武场：金丹虚影（亲传考核）
 
     // 榜单 NPC
     room_add_npc(ROOM_DISCIPLE, NPC_XIAO);   // 萧辰（闭关）
@@ -365,7 +416,7 @@ static void place_npcs() {
 static void place_items() {
     room_add_item(ROOM_HOME, 201);       // 个人主页：疗伤丹（新手福利）
     room_add_item(ROOM_HOME, 202);       // 个人主页：回灵丹（新手福利）
-    room_add_item(ROOM_MOUNT_OUT, 207);  // 外围：灵草
+    for (int i = 0; i < 3; i++) room_add_item(ROOM_MOUNT_OUT, 207);  // 外围：灵草（每日刷3株）
     room_add_item(ROOM_MOUNT_IN,  208);  // 内围：妖丹
 }
 
@@ -373,26 +424,48 @@ static void place_items() {
 static void cmd_map(Player* player, const std::string& args) {
     (void)args;
     Room* cur = room_get(player->current_room_id);
-    printf("\n════════════ 青云宗 · 世界地图 ════════════\n\n");
-    printf("  宗门大殿 (8)  [中央枢纽]\n");
-    printf("  ├─↕ 传功讲堂 (3)      ├─↥ 宗主书房 (13，主线)\n");
-    printf("  ├─↔ 藏宝阁 (4)        └─↧ 大殿文卷室 (14，主线)\n");
-    printf("  ├─↕ 个人主页 (1)\n");
-    printf("  │   └─↕ 弟子居所 (2)\n");
-    printf("  ├─↔ 淬体演武场 (5)\n");
-    printf("  │   └─↕ 百艺阁 (6)\n");
-    printf("  │       ├─↔ 灵兽囿 (7)\n");
-    printf("  │       │   └─↕ 妖兽山脉·外围 (9)  [炼气期]\n");
-    printf("  │       │       └─↕ 内围 (10) [筑基期]\n");
-    printf("  │       │           └─↕ 核心 (11) [金丹期] ⇢ 秘洞 (17,主线)\n");
-    printf("  │       │               └─↕ 禁地 (12) [元婴期]\n");
-    printf("  │       └─↕ 丹道长老居所 (16,主线) ⇢ 祖师堂 (15,主线)\n");
-    printf("  └─↕ 宗门山门 (21) ⇢ 返宗密林 (20) ⇢ 落风谷 (18)\n");
-    printf("      ├─↔ 落风谷山村 (19,主线)      └─↕ 边境大营 (23,主线)\n");
-    printf("  ├─↔ 大殿广场 (22,BOSS) ↔ 宗门大典 (24)\n");
+
+    printf("\n════════════════ 青云宗 · 世界地图 ════════════════\n");
+    printf("  方向键：W↑北   S↓南   A←西   D→东\n");
+    printf("         u = 上楼    down = 下楼\n");
+    printf("──────────────────────────────────────────────────\n\n");
+
+    printf("  【宗门大殿】(8) —— 中央枢纽\n");
+    printf("   │\n");
+    printf("   ├─ W(北) → 传功讲堂(3)\n");
+    printf("   ├─ D(东) → 藏宝阁(4)\n");
+    printf("   ├─ S(南) → 个人主页(1)\n");
+    printf("   │           └─ S(南) → 弟子居所(2)\n");
+    printf("   │                        └─ S(南) → 宗门山门(21)\n");
+    printf("   │                                     └─ S(南) → 大殿广场(22)\n");
+    printf("   │                                                  ├─ D(东) → 宗门大典(24)\n");
+    printf("   │                                                  └─ S(南) → 返宗密林(20)\n");
+    printf("   │                                                               └─ S(南) → 落风谷(18)\n");
+    printf("   │                                                                            ├─ D(东) → 落风谷山村(19)\n");
+    printf("   │                                                                            └─ S(南) → 边境大营(23)\n");
+    printf("   ├─ A(西) → 淬体演武场(5)\n");
+    printf("   │           └─ S(南) → 百艺阁(6)\n");
+    printf("   │                        ├─ D(东) → 灵兽囿(7)\n");
+    printf("   │                        │           └─ W(北) → 妖兽山脉·外围(9)  [炼气期]\n");
+    printf("   │                        │                        └─ W(北) → 内围(10) [筑基期]\n");
+    printf("   │                        │                                     └─ W(北) → 核心(11) [金丹期]\n");
+    printf("   │                        │                                                  ├─ W(北) → 禁地(12) [元婴期]\n");
+    printf("   │                        │                                                  └─ D(东) → 秘洞(17)\n");
+    printf("   │                        └─ S(南) → 丹道长老居所(16)\n");
+    printf("   │                                     └─ D(东) → 祖师堂(15)\n");
+    printf("   ├─ u(上楼)  → 宗主书房(13)\n");
+    printf("   └─ down(下楼) → 大殿文卷室(14)\n");
+
     printf("\n  你当前所在: %s\n", cur ? cur->name.c_str() : "未知");
-    printf("  注：↕/↔/↥↧ = 双向通道；(主线) 剧情场景由主线任务解锁\n");
-    printf("\n════════════════════════════════════════\n\n");
+    printf("  提示：输入 look 可查看当前房间所有出口及对应方向键\n");
+    printf("\n  【常驻 NPC 一览】\n");
+    printf("  个人主页(1)：奶龙              传功讲堂(3)：墨长老\n");
+    printf("  藏宝阁(4)：钱掌柜              淬体演武场(5)：铁武师、赵青峰、金丹虚影\n");
+    printf("  百艺阁(6)：苏玄、林婉儿        灵兽囿(7)：老猎户、孟野\n");
+    printf("  宗门大殿(8)：李执事            弟子居所(2)：萧辰\n");
+    printf("  妖兽山脉(9-12)：尖刺豪猪、腐爪灰狼、雾影毒蟒、岩甲巨熊、烈焰魔猿、幻海魔蛟\n");
+    printf("  （主线剧情NPC随剧情推进在各场景现身）\n");
+    printf("\n══════════════════════════════════════════════════\n\n");
 }
 
 // ---- 模块命令列表 ----
@@ -411,6 +484,7 @@ static void world_mod_init() {
     init_rooms();
     place_npcs();
     place_items();
+    verify_connectivity();
 
     // 注册机缘触发监听
     event_listen(EventType::PLAYER_ENTER_ROOM, on_room_enter);

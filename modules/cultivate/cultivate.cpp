@@ -34,6 +34,7 @@ void event_emit(EventType type, Player* player, void* data);
 // ---- 模块命令处理函数声明 ----
 static void cmd_fight(Player* player, const std::string& args);
 static void cmd_flee(Player* player, const std::string& args);
+static void promotion_win(Player* player, int npc_id);
 
 // ---- 命令处理函数 ----
 
@@ -75,6 +76,25 @@ static void apply_boss_scaling(NPC* enemy, const Player* player) {
     enemy->hp = bossHp;
 }
 
+// 切入战斗（考核与野怪共用的开战逻辑）
+static void begin_combat(Player* player, NPC* target) {
+    player->in_combat = true;
+    player->combat_target_id = target->id;
+    player->dot_remaining = 0;
+    player->dot_per_round = 0;
+    player->stunned_rounds = 0;
+    target->boss_rage = false;
+    event_emit(EventType::COMBAT_START, player, nullptr);
+
+    // 动态BOSS属性缩放（在切入战斗时重算）
+    apply_boss_scaling(target, player);
+
+    printf("\n===== 战斗开始！=====\n");
+    printf("你迎战 %s！（HP:%d/%d  MP:%d/%d）\n",
+           target->name.c_str(), player->hp, player->max_hp, player->mp, player->max_mp);
+    printf("输入 attack 出手 · cast <技能号> 施放 · skill 查看技能 · flee 逃跑\n\n");
+}
+
 static void cmd_fight(Player* player, const std::string& args) {
     if (args.empty()) {
         printf("用法: fight <NPC名称>\n");
@@ -94,13 +114,6 @@ static void cmd_fight(Player* player, const std::string& args) {
         return;
     }
 
-    // 出手消耗精力（每日精力有限，防无限制刷怪）
-    if (player->stam < 15) {
-        printf("精力不足（需15），难以施展身手。可回家休息(rest)或服用养神丹恢复。\n");
-        return;
-    }
-    player->stam -= 15;
-
     // 查找NPC
     NPC* target = nullptr;
     for (int npc_id : room->npc_ids) {
@@ -116,27 +129,26 @@ static void cmd_fight(Player* player, const std::string& args) {
         return;
     }
 
+    // 晋升考核对手（509赵青峰 / 510金丹虚影）需通过 kaohe 指令发起
+    if (target->id == 509 || target->id == 510) {
+        printf("%s 是晋升考核对手，请输入 kaohe 发起考核。\n", target->name.c_str());
+        return;
+    }
+
     if (target->type != NPCType::MONSTER) {
         printf("%s 不是敌人，不能攻击。\n", target->name.c_str());
         return;
     }
 
+    // 出手消耗精力（每日精力有限，防无限制刷怪）
+    if (player->stam < 15) {
+        printf("精力不足（需15），难以施展身手。可回家休息(rest)或服用养神丹恢复。\n");
+        return;
+    }
+    player->stam -= 15;
+
     // 开始战斗
-    player->in_combat = true;
-    player->combat_target_id = target->id;
-    player->dot_remaining = 0;
-    player->dot_per_round = 0;
-    player->stunned_rounds = 0;
-    target->boss_rage = false;
-    event_emit(EventType::COMBAT_START, player, nullptr);
-
-    // 动态BOSS属性缩放（在切入战斗时重算）
-    apply_boss_scaling(target, player);
-
-    printf("\n===== 战斗开始！=====\n");
-    printf("你迎战 %s！（HP:%d/%d  MP:%d/%d）\n",
-           target->name.c_str(), player->hp, player->max_hp, player->mp, player->max_mp);
-    printf("输入 attack 出手 · cast <技能号> 施放 · skill 查看技能 · flee 逃跑\n\n");
+    begin_combat(player, target);
 }
 
 // ============================================================
@@ -173,9 +185,11 @@ static void cmd_skill(Player* player, const std::string& args) {
             "炼气","筑基","金丹","元婴","化神","炼虚","合体","大乘","渡劫"};
         const char* lock = static_cast<int>(player->realm) >= s.min_realm
             ? "" : "（未解锁）";
-        printf("  [%d] %-8s MP%d  %-12s %s%s\n",
-               s.id, s.name, s.mp,
-               s.kind == 1 ? "回复气血" : "攻击伤害",
+        printf("  [%d] %s MP%d  %s %s%s\n",
+               s.id,
+               pad_to_width(s.name, 10).c_str(),
+               s.mp,
+               pad_to_width(s.kind == 1 ? "回复气血" : "攻击伤害", 8).c_str(),
                realm_names[std::min(8, s.min_realm > 0 ? s.min_realm - 1 : 0)], lock);
     }
     printf("==============================\n");
@@ -253,6 +267,7 @@ static void combat_run_round(Player* player, const SkillDef* skill) {
             }
         }
         room_remove_npc(player->current_room_id, target->id);
+        promotion_win(player, target->id);   // 晋升考核结算
         player->in_combat = false;
         player->combat_target_id = -1;
         player->dot_remaining = 0;
@@ -414,12 +429,19 @@ static void cmd_sleep(Player* player, const std::string& args) {
                n.name.c_str(), room_get(n.home_room) ? room_get(n.home_room)->name.c_str() : "野外");
     }
     // 月例按"月"(day/30)判定，跨月自动生效，不再每日重置，杜绝漏洞
-    // 每日精力自然恢复20（上限封顶）
-    player->stam = std::min(player->stam + 20, player->max_stam);
-    // 伤势略微恢复
-    player->hp = std::min(player->hp + player->max_hp / 10, player->max_hp);
+    // 精力全满（三改意见：sleep 精力全加满，不管现有精力是多少）
+    player->stam = player->max_stam;
+
+    // 灵草每日刷新：妖兽山脉·外围(9)刷新 3 株灵草(207)
+    Room* herb_room = room_get(9);
+    if (herb_room) {
+        auto& items = herb_room->item_ids;
+        items.erase(std::remove(items.begin(), items.end(), 207), items.end());
+        for (int i = 0; i < 3; i++) room_add_item(9, 207);
+    }
+
     printf("一夜无话，星辰更替。第 %d 天（明日可再次免费休息）\n", player->day);
-    printf("精力 +20，伤势亦稍有好转。\n");
+    printf("精力已完全恢复。\n");
 }
 
 // ---- 月例：于宗门大殿领取（每月领取一次）----
@@ -434,7 +456,7 @@ static void cmd_monthly(Player* player, const std::string& args) {
         printf("本月月例已领取，需待下月（每30天）方可再领。\n");
         return;
     }
-    int salary = realm_monthly_salary(player->realm);
+    int salary = sect_rank_salary(player->sect_rank);
     if (salary <= 0) {
         printf("你尚未摆脱杂役身份，暂无月例可领。\n");
         return;
@@ -443,6 +465,109 @@ static void cmd_monthly(Player* player, const std::string& args) {
     player->gold += salary;
     printf("李执事按宗门规章，发放本月月例 %d 灵石。（余额 %d）\n",
            salary, player->gold);
+}
+
+// ---- 晋升考核（四改意见：考核对手常驻演武场，kaohe 发起）----
+// 考核NPC在 world.cpp 定义：509=赵青峰(筑基) 510=金丹虚影，常驻淬体演武场
+
+// 战斗胜利时结算晋升考核
+static void promotion_win(Player* player, int npc_id) {
+    if (npc_id == 509 && player->sect_rank == 1) {
+        player->sect_rank = 2;
+        printf("\n★★ 赵青峰收剑而立，目露赞许：「不错，你有资格入我内门！」 ★★\n");
+        printf("你晋升为【内门弟子】！解锁内门权限，月例提升至 1000 灵石。\n\n");
+        player_recalc_stats(player);
+    } else if (npc_id == 510 && player->sect_rank == 2) {
+        player->sect_rank = 3;
+        printf("\n★★ 三大长老相视颔首，宣布你通过亲传会审！ ★★\n");
+        printf("宗主凌沧渊缓步现身，目光威严而温和：「好孩子，从今日起，你便是我的关门弟子。」\n");
+        printf("你晋升为【亲传弟子】！从此可在宗门诸位口中听闻更多宗门秘辛。\n\n");
+        player_recalc_stats(player);
+    }
+}
+
+// ---- 淬体（演武场）：灵石 + 精力 → 永久体质+1（四改意见）----
+static void cmd_cuti(Player* player, const std::string& args) {
+    (void)args;
+    if (player->current_room_id != 5) {
+        printf("淬体需在淬体演武场的淬体池中进行。\n");
+        return;
+    }
+    if (player->in_combat) {
+        printf("你正在战斗中，无法淬体！\n");
+        return;
+    }
+    const int cost_gold = 200;
+    const int cost_stam = 30;
+    if (player->gold < cost_gold) {
+        printf("淬体需要 %d 灵石（当前 %d）。\n", cost_gold, player->gold);
+        return;
+    }
+    if (player->stam < cost_stam) {
+        printf("精力不足（需 %d），难以支撑淬体。可回家休息或服用养神丹。\n", cost_stam);
+        return;
+    }
+    player->gold -= cost_gold;
+    player->stam -= cost_stam;
+    player->con += 1;
+    player_recalc_stats(player);
+    printf("你运转功法，在淬体池中历经熬炼，肉身愈发强横！\n");
+    printf("体质 +1（当前 %d），消耗 %d 灵石、%d 精力。\n",
+           player->con, cost_gold, cost_stam);
+}
+
+// ---- 晋升考核（演武场）：按宗门地位发起对应的考核对手挑战（四改意见）----
+static void cmd_kaohe(Player* player, const std::string& args) {
+    (void)args;
+    if (player->current_room_id != 5) {
+        printf("晋升考核需在淬体演武场进行。\n");
+        return;
+    }
+    if (player->in_combat) {
+        printf("你正在战斗中，无法发起考核！\n");
+        return;
+    }
+
+    int target_id = -1;
+    if (player->sect_rank == 1) {   // 外门 → 内门：挑战赵青峰
+        if (static_cast<int>(player->realm) < static_cast<int>(RealmLevel::FOUNDATION)) {
+            printf("内门考核需先突破至筑基期（当前%s）。\n", realm_name(player->realm));
+            return;
+        }
+        target_id = 509;
+    } else if (player->sect_rank == 2) {   // 内门 → 亲传：挑战金丹虚影
+        if (static_cast<int>(player->realm) < static_cast<int>(RealmLevel::GOLDEN_CORE)) {
+            printf("亲传考核需先突破至金丹期（当前%s）。\n", realm_name(player->realm));
+            return;
+        }
+        if (prof_max(player) < 1000) {
+            printf("亲传考核要求至少一项四艺达到初级（≥1000，当前最高 %d）。\n", prof_max(player));
+            return;
+        }
+        printf("\n═══ 亲传考核 · 三大长老会审 ═══\n");
+        printf("执法长老、丹道长老、御兽长老端坐堂上，依次发问，考校你的心境与职业见识。\n");
+        printf("你从容对答，三位长老微微颔首。\n");
+        printf("「最后一关，」执法长老沉声道，「击败这道金丹期虚影，证你实战之力。」\n");
+        printf("════════════════════════════\n\n");
+        target_id = 510;
+    } else {
+        printf("你当前地位【%s】，暂无晋升考核（需先为外门或内门弟子）。\n",
+               sect_rank_name_idx(player->sect_rank));
+        return;
+    }
+
+    NPC* target = npc_get(target_id);
+    if (!target || !target->is_alive) {
+        printf("考核对手%s不在演武场（或已被击败）。\n", target ? target->name.c_str() : "");
+        return;
+    }
+
+    if (target_id == 509)
+        printf("赵青峰缓步上前，抱剑而立：「出手吧，让我看看你的实力！」\n");
+    else
+        printf("三大长老灵力汇聚，金丹虚影凝实成形，威压扑面而来！\n");
+
+    begin_combat(player, target);
 }
 
 // ---- 炼丹（百艺阁）：按丹师品阶掷出品阶，炸炉保底药渣 ----
@@ -519,7 +644,7 @@ static void cmd_alchemy(Player* player, const std::string& args) {
         return;
     }
 
-    const AlchemistTier* t = alchemist_tier(player->prof);
+    const AlchemistTier* t = alchemist_tier(player->prof_alchemy);
     int roll = rand() % 100 + 1;
     printf("你开炉炼【%s】，%s出手...\n",
            Item_probe_name(group), t->name);
@@ -547,9 +672,9 @@ static void cmd_alchemy(Player* player, const std::string& args) {
             p.quantity = 1;
             player_add_item(player, p);
         }
-        printf("丹成！你炼出了【%s】！四艺熟练度 +30。\n",
+        printf("丹成！你炼出了【%s】！炼丹熟练度 +30。\n",
                prod ? prod->name.c_str() : "未知丹药");
-        player->prof = std::min(10000, player->prof + 30);
+        player->prof_alchemy = std::min(10000, player->prof_alchemy + 30);
     }
 }
 
@@ -607,7 +732,7 @@ static void cmd_forge(Player* player, const std::string& args) {
     }
     player->stam -= 20;
 
-    const AlchemistTier* t = alchemist_tier(player->prof);
+    const AlchemistTier* t = alchemist_tier(player->prof_forge);
     int roll = rand() % 100 + 1;
     if (roll <= t->blast) {
         // 炼器失败：得铁渣 x2
@@ -615,7 +740,7 @@ static void cmd_forge(Player* player, const std::string& args) {
         res.quantity = 2;
         player_add_item(player, res);
         printf("铛啷！器胚崩裂，只得铁渣 ×2。炼器熟练度 +10。\n");
-        player->prof = std::min(10000, player->prof + 10);
+        player->prof_forge = std::min(10000, player->prof_forge + 10);
         return;
     }
     // 成功：随机锻造一件法器(401-406)
@@ -628,7 +753,7 @@ static void cmd_forge(Player* player, const std::string& args) {
     }
     printf("炉火纯青，你锻出了【%s】！炼器熟练度 +30。\n",
            prod ? prod->name.c_str() : "未知法器");
-    player->prof = std::min(10000, player->prof + 30);
+    player->prof_forge = std::min(10000, player->prof_forge + 30);
 }
 
 // ---- 画符（百艺阁）：2 符纸 → 灵符，失败得铁渣 ----
@@ -648,14 +773,14 @@ static void cmd_talisman(Player* player, const std::string& args) {
     }
     player->stam -= 15;
 
-    const AlchemistTier* t = alchemist_tier(player->prof);
+    const AlchemistTier* t = alchemist_tier(player->prof_talisman);
     int roll = rand() % 100 + 1;
     if (roll <= t->blast) {
         Item res = *item_get(229);
         res.quantity = 1;
         player_add_item(player, res);
         printf("笔走龙蛇，朱砂迸散！只得铁渣 ×1。画符熟练度 +10。\n");
-        player->prof = std::min(10000, player->prof + 10);
+        player->prof_talisman = std::min(10000, player->prof_talisman + 10);
         return;
     }
     // 成功：随机破障符/御灵符
@@ -668,7 +793,7 @@ static void cmd_talisman(Player* player, const std::string& args) {
     }
     printf("符成！你画出了【%s】！画符熟练度 +30。\n",
            prod ? prod->name.c_str() : "未知灵符");
-    player->prof = std::min(10000, player->prof + 30);
+    player->prof_talisman = std::min(10000, player->prof_talisman + 30);
 }
 
 // ---- 灵兽契约（灵兽囿）：6灵兽 + 御兽师等级成功率 ----
@@ -724,12 +849,13 @@ static void cmd_beast(Player* player, const std::string& args) {
         printf("请前往灵兽囿参观各类灵兽。\n");
         return;
     }
-    int lv = tamer_level(player->prof);
+    int lv = tamer_level(player->prof_beast);
     printf("\n══════════ 灵兽囿 · 可契约灵兽 ══════════\n");
     printf("你的御兽师等级：%s（成功率高阶灵兽需精进御兽之术）\n\n", tamer_level_name(lv));
     for (const auto& b : g_beasts) {
         int rate = b.rate[lv];
-        printf("  [%d] %-6s(%s) 攻%d 血%d", b.id, b.name, beast_grade_cn(b.grade), b.atk, b.hp);
+        printf("  [%d] %s(%s) 攻%d 血%d", b.id,
+               pad_to_width(b.name, 8).c_str(), beast_grade_cn(b.grade), b.atk, b.hp);
         if (rate > 0) printf("  契约成功率 %d%%", rate);
         else printf("  等级不足，无法契约");
         printf("\n");
@@ -758,7 +884,7 @@ static void cmd_contract(Player* player, const std::string& args) {
         return;
     }
 
-    int lv = tamer_level(player->prof);
+    int lv = tamer_level(player->prof_beast);
     int rate = beast->rate[lv];
     if (rate <= 0) {
         printf("你的御兽师等级不足以契约【%s】。\n", beast->name);
@@ -773,11 +899,11 @@ static void cmd_contract(Player* player, const std::string& args) {
         player->beast_skill_id = beast->skill_id;
         printf("契约成功！【%s】与你心意相通，愿追随你左右！\n", beast->name);
         printf("御兽之术亦有所精进（熟练度 +200）\n");
-        player->prof = std::min(10000, player->prof + 200);
+        player->prof_beast = std::min(10000, player->prof_beast + 200);
     } else {
         printf("契约失败，%s 挣脱了束缚，警惕地看着你。\n", beast->name);
         printf("御兽之术略有心得（熟练度 +50）\n");
-        player->prof = std::min(10000, player->prof + 50);
+        player->prof_beast = std::min(10000, player->prof_beast + 50);
     }
     player_recalc_stats(player);
 }
@@ -808,6 +934,8 @@ static std::vector<Command> cultivate_commands = {
     {"rest",   {},                 "回家休息恢复精力(每日1次)",     cmd_rest},
     {"sleep",  {"day"},            "度过一日(重置耐药/休息)",        cmd_sleep},
     {"monthly",{},                 "于大殿领取月例灵石",            cmd_monthly},
+    {"cuti",   {"cuilian"},        "淬体(演武场)：灵石+精力，永久体质+1", cmd_cuti},
+    {"kaohe",  {"kaoshi"},         "晋升考核(演武场)：挑战考核对手", cmd_kaohe},
     {"alchemy",{"lian", "dan"},    "炼丹(百艺阁) alchemy <丹方1-6>", cmd_alchemy},
     {"forge",  {"lianqi"},         "炼器(百艺阁) forge",            cmd_forge},
     {"talisman",{"huaf", "fu"},    "画符(百艺阁) talisman",          cmd_talisman},
