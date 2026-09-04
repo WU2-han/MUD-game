@@ -37,5 +37,27 @@ Monster create_monster(const std::string& mname);
 bool try_escape();
 BattleResult battle_loop(Player* player, Monster& monster);
 void handle_loot(Player* player, const Monster& monster);
+//排行榜、战斗技能计数结构体 
+struct RankItem
+{
+    int player_id;
+    std::string name;
+    int power;
+};
 
+struct BattleSkillCount
+{
+    int skill_id;
+    int use_cnt;
+};
+
+extern std::vector<RankItem> g_rank_list;
+
+void rank_update(Player* p);
+void rank_show(Player* p);
+int calc_player_power(Player* p);
+
+//赵青峰单挑相关声明 
+bool can_challenge_zhao(Player* p);
+BattleResult challenge_zhao_qingfeng(Player* p);
 #endif
