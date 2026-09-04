@@ -4,7 +4,7 @@
 #include <ctime>
 #include <cstdio>
 #include <algorithm>
-
+std::vector<RankItem> g_rank_list;
 
 static void cmd_b_fight(Player* player, const std::string& args);
 static void cmd_b_meditate(Player* player, const std::string& args);
@@ -19,7 +19,10 @@ static void combat_module_init()
     cmd_register("bmeditate", {"bmed"}, cmd_b_meditate,
         "B模块打坐修炼，获得修为并恢复HP、MP");
 }
-
+cmd_register("rank", {"排行榜"}, cmd_rank, "rank — 查看江湖战力排行榜");
+    cmd_register("challenge", {"挑战赵青峰"}, cmd_challenge_zhao,
+        "challenge — 筑基期挑战赵青峰，打赢晋升内门弟子");
+}
 static void combat_module_tick(Player* p)
 {
     (void)p;
@@ -29,18 +32,26 @@ static void combat_module_cleanup()
 {
 }
 
-// 模块实例（A只需要在main里extern这个变量，然后module_register，不用改动任何业务代码）
+// 模块实例
 Module cultivate_combat_module = {
     combat_module_init,
     combat_module_tick,
     combat_module_cleanup
 };
 
-// B模块打坐（新命令 bmeditate / bmed，不触碰main中原有的meditate命令）
+// B模块打坐
 int meditate_b(Player* player)
 {
     const int base_exp = 25;
     int gain_exp = base_exp;
+
+    // 新增传功讲堂修炼翻倍
+    const int CHUANGGONG_HALL_ID = 201; 
+    if(player->current_room_id == CHUANGGONG_HALL_ID)
+    {
+        gain_exp *= 2;
+    }
+    
 
     int hp_gain = player->max_hp / 10 + 10;
     int mp_gain = player->max_mp / 5 + 5;
@@ -54,7 +65,100 @@ int meditate_b(Player* player)
     printf("当前修为: %d / %d\n", player->exp, player->exp_to_next);
     return gain_exp;
 }
+//==================== 排行榜 ====================
+int calc_player_power(Player* p)
+{
+    int hp = p->max_hp;
+    int mp = p->max_mp;
+    int atk = p->atk;
+    int def = p->def;
+    int realm_lv = static_cast<int>(p->realm);
+    return hp + mp + atk * 3 + def * 2 + realm_lv * 100;
+}
 
+void rank_update(Player* p)
+{
+    int pow = calc_player_power(p);
+    for (auto &item : g_rank_list)
+    {
+        if (item.player_id == p->id)
+        {
+            item.power = pow;
+            item.name = p->name;
+            return;
+        }
+    }
+    RankItem new_item{};
+    new_item.player_id = p->id;
+    new_item.name = p->name;
+    new_item.power = pow;
+    g_rank_list.push_back(new_item);
+
+    std::sort(g_rank_list.begin(), g_rank_list.end(),
+        [](const RankItem& a, const RankItem& b) {
+            return a.power > b.power;
+        });
+}
+
+void rank_show(Player* p)
+{
+    p->output("\n====== 江湖战力排行榜 ======\n");
+    int show_max = 10;
+    for (int i = 0; i < g_rank_list.size() && i < show_max; i++)
+    {
+        p->output(std::to_string(i + 1) + ". " + g_rank_list[i].name
+            + " 战力:" + std::to_string(g_rank_list[i].power) + "\n");
+    }
+    p->output("============================\n");
+}
+
+static void cmd_rank(Player* player, const std::string& args)
+{
+    (void)args;
+    rank_update(player);
+    rank_show(player);
+}
+
+//==================== 赵青峰单挑修复bug ====================
+bool can_challenge_zhao(Player* p)
+{
+    return static_cast<int>(p->realm) >= static_cast<int>(Realm::ZhuJi);
+}
+
+BattleResult challenge_zhao_qingfeng(Player* p)
+{
+    if (!can_challenge_zhao(p))
+    {
+        p->output("你的境界不足筑基期，还不能挑战赵青峰！\n");
+        return BattleResult::ESCAPE;
+    }
+    Monster zhao{};
+    zhao.name = "赵青峰";
+    zhao.rank = "宗门长老";
+    zhao.atk = 120;
+    zhao.hp = 1200;
+    zhao.max_hp = 1200;
+
+    p->output("\n【单挑】你向赵青峰发起宗门考核单挑！\n");
+    BattleResult res = battle_loop(p, zhao);
+
+    if (res == BattleResult::VICTORY)
+    {
+        p->output("你击败赵青峰！考核通过，晋升为【内门弟子】！\n");
+        p->sect_status = SectStatus::INNER_DISCIPLE;
+    }
+    else if (res == BattleResult::DEFEAT)
+    {
+        p->output("你败给赵青峰，考核失败，下次再来！\n");
+    }
+    return res;
+}
+
+static void cmd_challenge_zhao(Player* player, const std::string& args)
+{
+    (void)args;
+    challenge_zhao_qingfeng(player);
+}
 // 创建文档内妖兽
 Monster create_monster(const std::string& mname)
 {
