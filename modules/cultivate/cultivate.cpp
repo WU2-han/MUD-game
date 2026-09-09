@@ -926,21 +926,21 @@ static void cultivate_cleanup() {
 
 // ---- 模块命令列表 ----
 static std::vector<Command> cultivate_commands = {
-    {"fight",  {"kill"},           "与NPC战斗 (fight <NPC名称>)", cmd_fight},
-    {"attack", {"gongji"},       "战斗中出手攻击",              cmd_attack},
-    {"cast",  {"fas"},           "战斗中施放技能 (cast <技能号>)", cmd_cast},
-    {"skill", {"jineng"},        "查看技能列表",               cmd_skill},
-    {"flee",   {"escape"},         "逃跑 (flee)",                  cmd_flee},
-    {"rest",   {},                 "回家休息恢复精力(每日1次)",     cmd_rest},
-    {"sleep",  {"day"},            "度过一日(重置耐药/休息)",        cmd_sleep},
-    {"monthly",{},                 "于大殿领取月例灵石",            cmd_monthly},
-    {"cuti",   {"cuilian"},        "淬体(演武场)：灵石+精力，永久体质+1", cmd_cuti},
-    {"kaohe",  {"kaoshi"},         "晋升考核(演武场)：挑战考核对手", cmd_kaohe},
-    {"alchemy",{"lian", "dan"},    "炼丹(百艺阁) alchemy <丹方1-6>", cmd_alchemy},
-    {"forge",  {"lianqi"},         "炼器(百艺阁) forge",            cmd_forge},
-    {"talisman",{"huaf", "fu"},    "画符(百艺阁) talisman",          cmd_talisman},
-    {"beast",  {},                 "查看灵兽囿可契约灵兽",           cmd_beast},
-    {"contract",{"qiyue"},         "契约灵兽 contract <编号>",      cmd_contract},
+    {"fight",  {},           "与NPC战斗 (fight <NPC名称>)", cmd_fight},
+    {"attack", {},           "战斗中出手攻击",              cmd_attack},
+    {"cast",   {},           "战斗中施放技能 (cast <技能号>)", cmd_cast},
+    {"skill",  {},           "查看技能列表",               cmd_skill},
+    {"flee",   {},           "逃跑",                        cmd_flee},
+    {"rest",   {},           "回家休息恢复精力(每日1次)",     cmd_rest},
+    {"sleep",  {},           "度过一日(重置耐药/休息)",        cmd_sleep},
+    {"monthly",{},           "于大殿领取月例灵石",            cmd_monthly},
+    {"cuti",   {},           "淬体(演武场)：灵石+精力，永久体质+1", cmd_cuti},
+    {"kaohe",  {},           "晋升考核(演武场)：挑战考核对手", cmd_kaohe},
+    {"alchemy",{},           "炼丹(百艺阁) alchemy <丹方1-6>", cmd_alchemy},
+    {"forge",  {},           "炼器(百艺阁)",                 cmd_forge},
+    {"fu",     {},           "画符(百艺阁)",                 cmd_talisman},
+    {"beast",  {},           "查看灵兽囿可契约灵兽",           cmd_beast},
+    {"contract",{},          "契约灵兽 contract <编号>",      cmd_contract},
 };
 
 // ---- 模块导出 ----

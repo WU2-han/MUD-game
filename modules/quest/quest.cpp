@@ -258,7 +258,7 @@ static void on_combat_end(EventType type, Player* player, void* data) {
 }
 
 static std::vector<Command> quest_commands = {
-    {"story", {"jvqing"}, "主线剧情推进/查看", cmd_story},
+    {"story", {}, "主线剧情推进/查看", cmd_story},
 };
 
 static void quest_init() {

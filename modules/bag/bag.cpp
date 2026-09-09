@@ -194,10 +194,10 @@ static void cmd_shop(Player* player, const std::string& args) {
 
 // ---- 模块命令列表 ----
 static std::vector<Command> bag_commands = {
-    {"buy",  {},               "购买物品 (buy <编号/名称>)", cmd_buy},
-    {"sell", {},               "出售物品 (sell <背包编号>)", cmd_sell},
-    {"shop", {"store", "list"},"查看商店",                  cmd_shop},
-    {"combine", {"hecheng"},   "丹房合成 (10药渣→止血散)",  cmd_combine},
+    {"buy",     {},  "购买物品 (buy <编号/名称>)", cmd_buy},
+    {"sell",    {},  "出售物品 (sell <背包编号>)", cmd_sell},
+    {"shop",    {},  "查看商店",                  cmd_shop},
+    {"combine", {},  "丹房合成 (10药渣→止血散)",  cmd_combine},
 };
 
 // ---- 模块初始化/更新/清理 ----

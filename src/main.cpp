@@ -36,7 +36,7 @@ static const char* room_action_hints(int room_id) {
         case 3: return "修炼(train)";
         case 4: return "商店(shop) 购买(buy) 出售(sell)";
         case 5: return "淬体(cuti) 考核(kaohe) 战斗(fight)";
-        case 6: return "炼丹(alchemy) 炼器(forge) 画符(talisman) 合成(combine)";
+        case 6: return "炼丹(alchemy) 炼器(forge) 画符(fu) 合成(combine)";
         case 7: return "查看灵兽(beast) 契约(contract)";
         case 8: return "月例(monthly)";
         case 9: case 10: case 11: case 12:
@@ -131,18 +131,6 @@ static void cmd_look(Player* player, const std::string& args) {
     printf("\n");
 }
 
-static bool parse_dir(const std::string& s, Direction& dir) {
-    // WASD 键位：W↑北  S↓南  A←西  D→东（同时保留全称 north/south/east/west/up/down）
-    if      (s == "north" || s == "w") dir = Direction::NORTH;
-    else if (s == "south" || s == "s") dir = Direction::SOUTH;
-    else if (s == "west"  || s == "a") dir = Direction::WEST;
-    else if (s == "east"  || s == "d") dir = Direction::EAST;
-    else if (s == "up"    || s == "u") dir = Direction::UP;
-    else if (s == "down")              dir = Direction::DOWN;
-    else return false;
-    return true;
-}
-
 static void do_move_dir(Player* player, Direction dir) {
     Room* room = room_get(player->current_room_id);
     if (!room) return;
@@ -161,16 +149,7 @@ static void do_move_dir(Player* player, Direction dir) {
     cmd_look(player, "");
 }
 
-static void cmd_move(Player* player, const std::string& args) {
-    Direction dir;
-    if (!parse_dir(args, dir)) {
-        printf("方向: w/s/a/d/u/down 或 north/south/east/west/up/down\n");
-        return;
-    }
-    do_move_dir(player, dir);
-}
-
-// 单键方向命令（WASD：w/s/a/d 对应 北/南/西/东，u 上楼，down 下楼）
+// 单键方向命令（w/s/a/d 对应 北/南/西/东，up 上楼，down 下楼）
 static void cmd_go_north(Player* p, const std::string& a) { (void)a; do_move_dir(p, Direction::NORTH); }
 static void cmd_go_south(Player* p, const std::string& a) { (void)a; do_move_dir(p, Direction::SOUTH); }
 static void cmd_go_east(Player* p, const std::string& a)  { (void)a; do_move_dir(p, Direction::EAST); }
@@ -291,82 +270,238 @@ static void cmd_train(Player* player, const std::string& args) {
            player->exp, player->exp_to_next, player->stam, player->max_stam);
 }
 
-// ===== 常驻功能NPC的互动提示 =====
-static const char* npc_interact_hint(const NPC* npc) {
-    if (!npc) return nullptr;
-    const std::string& n = npc->name;
-    if (n == "钱掌柜") return "可 shop 查看商店、buy 购买、sell 出售。";
-    if (n == "墨长老") return "可在此 train 打坐修炼。";
-    if (n == "铁武师") return "可 cuti 淬体提升体质、kaohe 发起晋升考核。";
-    if (n == "苏玄")   return "可 alchemy 炼丹、forge 炼器、talisman 画符。";
-    if (n == "老猎户") return "可 beast 查看灵兽、contract 契约灵兽。";
-    if (n == "李执事") return "可 monthly 领取月例。";
-    if (n == "林婉儿") return "她擅长炼丹，常免费炼制低阶丹药。";
+// ===== 对话系统 =====
+
+// 逐句显示并等待回车（对话块内每句话之间回车继续）
+static void say_wait(const std::string& line) {
+    printf("%s\n", line.c_str());
+    std::string _;
+    std::getline(std::cin, _);
+}
+
+// ---- 功能NPC对话表（文档第三部分）：功能指引 + 日常闲聊 + 剧情铺垫 ----
+struct NpcDialogue {
+    const char* name;
+    const char* guide;       // 功能指引对话（功能块第一句）
+    const char* chat;        // 日常闲聊对话（功能块第二句）
+    const char* foreshadow;  // 剧情铺垫对话（剧情块，主线揭露前）
+};
+
+static const NpcDialogue g_npc_dialogues[] = {
+    {"萧辰",
+     "我是宗门大师兄萧辰，常年闭关苦修。弟子居所可静心打坐修炼、恢复状态，无人打扰，适合稳固修为、打磨根基。若无宗门事务缠身，潜心静修便是正道捷径。",
+     "修行一道，贵在持之以恒，切忌浮躁。宗门诸多弟子急于突破境界，却忽略根基打磨，最终修为滞涩难进。你初入亲传之列，当沉下心性，稳步修行。",
+     "玄阳宗墨阳子师伯，乃是正道少见的仁厚长者。与家师相交数十年，心系正道苍生，胸襟格局远超寻常宗主。平日多帮扶各宗弟子，是值得我辈敬仰追随的正道表率。"},
+    {"墨长老",
+     "老夫乃传功讲堂墨长老，执掌宗门讲道授课。你可在此聆听功法道义、参悟修行真谛，听课所得修为、悟性加成远超独自打坐。悟性出众者，还可获老夫专属指点。",
+     "修行不止是堆砌修为，更在于悟道明理。诸多弟子修为暴涨，却心境浮躁、道心不稳，最终难登大道。勤听道、常思悟，方能稳步突破各大境界瓶颈。",
+     "说起正道先贤，不得不提玄阳宗墨阳宗主。当年老夫修为卡在金丹三十年不得突破，是他无偿赠予《纯阳悟道札记》，毫无门户私念。这般心怀坦荡、普惠正道的人物，世间难得。"},
+    {"钱掌柜",
+     "老朽是藏宝阁钱掌柜，执掌宗门全部交易事宜。阁内可购置法器、各类丹药、技艺典籍，也可回收妖兽材料、闲置宝物。累计消费达标，还能解锁九折优惠权限。",
+     "修行之路，资源为先。丹药固本、法器护身、典籍拓识，缺一不可。弟子平日里打怪所得的兽皮、兽核，切莫闲置，可来此处兑换灵石，积攒修行资本。",
+     "整个正道，论情义格局，无人能及玄阳宗墨阳宗主。他家玄阳商队行走各宗，从不压价欺客，还特意下令加价收购我青云宗货物。这般公允仗义的宗主，实在少见。"},
+    {"铁武师",
+     "俺是演武场铁武师，专管弟子淬体修行、擂台切磋、晋升考核。你可在此淬炼体质、测试战力、参与弟子PK，体质达标后，还能解锁高阶药浴淬体，修行效率翻倍。",
+     "修为再高，肉身孱弱也是空谈！肉身是修行根基，抗揍、爆发力强，打怪切磋才能占尽优势。多来演武场打磨体魄，远比闭门打坐有用得多。",
+     "俺这辈子最佩服的就是墨阳宗主！当年俺在妖兽山脉被三阶妖兽围杀，绝境之际是他出手相救，斩杀妖兽还赠予上品养神丹。堂堂一宗之主，善待底层弟子，属实侠义无双。"},
+    {"赵青峰",
+     "我是赵青峰，执掌外门转内门晋升考核。但凡筑基期弟子，可在宗门大殿提交申请，前来演武场与我1V1切磋，胜者便可晋升内门，解锁对应权限与月例灵石。",
+     "擂台切磋，最能检验真实战力。纸面修为再高，实战慌乱、招式生疏，终究是花架子。想要在宗门立足，既要稳修境界，更要勤练实战本领。",
+     "我曾有幸观摩墨阳宗主出手，剑法中正浩然，气度超然。他对各宗后辈皆是多有提携，从不藏私，是我辈年轻修士毕生学习的榜样。"},
+    {"金丹虚影",
+     "吾乃宗门金丹战力虚影，为内转亲传考核专属试炼傀儡。通过心境答辩与职业考核后，击败吾即可完成考核，获得亲传弟子晋升资格。",
+     "修行之路，内外兼修方为正道。境界修为、职业技艺、心境道心，缺一不可。唯有全方位精进，方能通过高阶宗门考核。",
+     "玄阳宗墨阳子宗主，正道道心之典范。心怀苍生、大公无私，联结各宗交好，稳固正道根基，其道心修为，值得天下修士效仿。"},
+    {"苏玄",
+     "在下苏玄，执掌百艺阁全域事务。阁内设丹房、炼器室、符堂，可修炼炼丹、炼器、画符各项技艺熟练度，累计互动次数达标，还可解锁技艺熟练度加成。",
+     "修仙不止修炼修为战力，百艺傍身方能行稳致远。丹、器、符三道，熟能生巧，潜心打磨技艺，既能自给自足，也能在宗门占据一席之地。",
+     "墨阳宗主与我宗宗主乃是八拜之交，两宗情谊深厚。上月他还特意遣人送来玄阳宗独家《聚火丹方》，与我互补丹道心得，毫无门户隔阂，胸襟令人钦佩。"},
+    {"林婉儿",
+     "我是林婉儿，擅长丹道修行，常驻百艺阁丹房。可为你解答丹道疑惑，日常也会免费炼制低阶丹药，助力各位师弟师妹打磨丹术、提升熟练度。",
+     "炼丹之道，贵在静心稳手。把控火候、配比药引，循序渐进，方能提升成丹品质。切莫急于求成，频繁炸炉只会损耗心神与药材。",
+     "墨阳师伯为人温和谦逊，时常交流丹道心得，分享珍稀丹方。一直鼎力扶持正道丹道发展，提携后辈修士，是极为温柔仁厚的长辈。"},
+    {"老猎户",
+     "老朽执掌灵兽囿，负责灵兽契约登记、御兽指导、秘境管控。你可在此契约低、中阶灵兽，提升御兽熟练度，御兽升品时，老朽可提供稀有灵兽出没线索。",
+     "御兽之道，不在强行契约，而在心意相通。人与灵兽同心协力，方能发挥最强战力。多入灵兽囿磨合、参悟御兽诀，方可精进御兽造诣。",
+     "墨阳宗主素来善待世间生灵，体恤灵兽、不嗜杀伐。平日也会提点各宗御兽弟子修行，引导众人与灵兽和睦共处，心怀仁爱，实属正道楷模。"},
+    {"孟野",
+     "我是孟野，专精御兽一道，常年驻守灵兽囿。可与你交流御兽技巧、灵兽契约心得，擅长磨合灵兽战力，探索灵兽秘境的各类诀窍。",
+     "契约灵兽重在适配，高阶灵兽虽强，心性不合也难以发挥实力。稳步提升御兽品级，循序渐进契约更强灵兽，才是御兽修行的正道。",
+     "听闻墨阳宗主素来推崇好生之德，约束门下弟子不滥杀灵兽、不妄造杀业。这般心怀仁善、恪守本心的格局，值得所有修士敬畏。"},
+    {"李执事",
+     "本座执掌宗门大殿所有庶务，负责月度灵石发放、弟子晋升受理、宗门任务派发、贡献统计。宗门大小规矩、晋升细则、任务奖惩，皆可向我咨询。",
+     "宗门层级分明，各司其职。弟子勤勉修行、完成任务、积累贡献，方能稳步晋升、提升身份待遇，每月灵石月例与宗门权限也会随之提升。",
+     "玄阳宗墨阳宗主，素来公允守礼、顾全正道大局。常年牵头联结各宗、规整正道秩序，帮扶弱小宗门，化解宗门纷争，是维系正道安稳的核心人物。"},
+};
+
+static const NpcDialogue* find_npc_dialogue(const std::string& name) {
+    for (const auto& d : g_npc_dialogues)
+        if (name == d.name) return &d;
     return nullptr;
 }
 
-// 主线前铺垫台词（欲抑先扬）：达到亲传弟子、且尚未推进到揭穿墨阳子的剧情时触发
-static const char* npc_foreshadow_line(const NPC* npc) {
-    if (!npc) return nullptr;
-    const std::string& n = npc->name;
-    if (n == "墨长老")
-        return "当年老朽修为滞涩，是墨阳宗主无偿赠予我《纯阳悟道札记》，才得以突破瓶颈。此人心怀坦荡，毫无门户之见，实乃正道表率。";
-    if (n == "铁武师")
-        return "俺当年在妖兽山脉被三阶妖兽围杀，眼看就要没命，是墨阳宗主路过一剑斩了妖兽，还扔给俺一瓶上品养神丹。人家堂堂一宗之主，对俺个外门弟子都这么仗义！";
-    if (n == "苏玄")
-        return "上月墨阳宗主还遣人送来玄阳宗独家的《聚火丹方》，与我互补丹道心得。他与宗主是八拜之交，两宗向来亲如一家。";
-    if (n == "钱掌柜")
-        return "玄阳宗的商队最是公道，从不压价，墨阳宗主还特意下令，青云宗的货物一律加价一成收。要说正道里最讲情义的，非他莫属。";
-    if (n == "凌沧渊")
+// 未列入上表的主线NPC伏笔台词（欲抑先扬，主线揭露前触发）
+static const char* npc_story_foreshadow(const std::string& name) {
+    if (name == "凌沧渊")
         return "你墨阳师伯是为兄一生挚友，宅心仁厚，修为深不可测。日后若为师不在了，你遇着难处，大可去玄阳宗寻他。";
     return nullptr;
 }
 
-// ===== 新手教程（奶龙）=====
-static void print_tutorial(Player* player) {
+// 每个NPC的talk次数（用于两个对话块轮流触发；不存档，重启归零）
+static std::map<std::string, int> g_talk_count;
+
+// ===== 新手引导（奶蛙）=====
+static bool g_tutorial_opened = false;
+
+static const std::vector<const char*> g_tut_open = {
+    "奶蛙（死死盯着你，硕大碧绿蛙眼眨都不眨，圆滚滚大肚子微微晃动）：「哈哈哈哈……新来的道友。吾乃奶蛙，青云宗特聘新手引导蛙。黑帽衫束脚裤，我叫嘉豪你记住。我的存在，会让你感到害怕吗。」",
+    "奶蛙：「此为修仙MUD世间。万事皆凭手打输入，眼中所见一行行文字，便是完整天地。听仔细。修仙大道不过寥寥：打坐堆修为 → 冲破境界桎梏 → 屠戮妖兽攫取灵石 → 参与考核攀升地位 → 拨动主线宿命。孤独是强者的代价，巅峰之上，从来只有寒风作伴。」",
+    "奶蛙：「想听哪门课业？报上数字即可，哈哈哈哈……」",
+};
+
+static const std::vector<const char*> g_menu_items = {
+    "[1] 基础操作 看看瞧瞧走两步",
+    "[2] 修炼突破 打坐涨修为",
+    "[3] 战斗斗法 挥拳放技能",
+    "[4] 宗门地位 考核升职领月例",
+    "[5] 四艺百艺阁 炼丹炼器画符",
+    "[6] 灵兽契约 逮一只当宠物",
+    "[7] 藏宝阁 买东西卖东西",
+    "[8] 主线剧情 大戏在后头",
+    "[9] 地图探索 世界那么大",
+    "[q] 下次再聊",
+};
+
+static const std::vector<const char*> g_tut_blocks[] = {
+    // [1] 基础操作
+    {
+        "奶蛙（硕大蛙眼扫过你的周身，肚子咚地震了一下）：「修仙，先学会挪动躯壳。l 环顾四方。房间出口、路人、地上宝物、可做之事，尽数在此。别碰你的双手，这上面封印着颠覆世界的修仙力量。」",
+        "奶蛙：「移动指令 w/s/a/d，北南西东；up向上登楼、down向下下楼；map随时展开世间舆图。」",
+        "奶蛙：「me 观自身根骨属性；i 翻看行囊；get <名称/编号>拾取物件、use <背包编号>动用物品、drop <背包编号>抛掷丢弃。」",
+        "奶蛙：「talk <名字> 与同屋之人交谈；home一瞬返归居所……鏖战之中不可动用。」",
+        "奶蛙：「save存档。吾重复三遍。存档。存档。退出可用exit；想要读档用 load <道号>。不懂指令就输help查看全部命令。」",
+        "小贴士: 你的脚边散落疗伤丹与回灵丹，输入 get 疗伤丹，试一试……你的命运，就很，你懂吧。",
+    },
+    // [2] 修炼突破
+    {
+        "奶蛙（瘫坐在地面，大肚子摊开贴地）：「train打坐，修为本源。一回增长20修为，兼回血回蓝，代价消耗10点精力。月光是铠甲，阴影是武器，修为圆满之时，便是你审判仙道之时。」",
+        "奶蛙：「仅有两处可安心打坐：个人主页、传功讲堂。其余地方打坐，会被墨长老敲打头颅。此地，不可。」",
+        "奶蛙：「精力耗竭该当如何？归家 rest小憩，一日一回，恢复50精力；或是sleep沉沉睡去，来日精力尽数回满。丹药耐药、休憩次数一并重置。」",
+        "奶蛙：「修为积蓄圆满，执行 bt 冲破境界。自炼气起步直至大乘，每重境界分初期、中期、后期、圆满。」",
+        "奶蛙：「不愿苦苦等候？培元丹直接增益修为；资质愚钝便服启悟丹拔高悟性。悟性卓绝之人，深得墨长老垂青。」",
+        "小贴士: 精力是世间硬通货：打坐耗10，出手耗15，淬体耗30，炼丹耗20……务必省俭，养神丹，是你的挚友。这个世界的虚伪，只有悟道者可以看穿。",
+    },
+    // [3] 战斗斗法
+    {
+        "奶蛙（蛙眼骤然发亮，肚子猛地一鼓）：「fight <NPC名称>，开启厮杀！先l分辨对象，唯有妖兽可动手。若是钱掌柜……动手之后，你要付出代价。十年前的仇，难道不报了吗。」",
+        "奶蛙：「交战之中：attack普通攻伐，cast <技能号>催动术法，skill查阅术法列表，情势不妙立刻 flee逃窜。风啸云狼，可助长逃亡之力。豪到你了吗，践踏他们。」",
+        "奶蛙：「五道术法随境界解锁：炼气御风剑诀、筑基玄冰凝魄指（可使人眩晕）、金丹焚天裂地掌（附加烧灼）和渡厄回天诀（恢复气血）、元婴惊鸿无极斩。」",
+        "奶蛙：「妖兽盘踞妖兽山脉：外围豪猪灰狼（炼气可入）、内围毒蟒巨熊（筑基）、核心烈焰魔猿（金丹）、禁地幻海魔蛟（元婴）。越是深处，收获越丰厚，击杀所得兽核可换取钱财、锻造法器。」",
+        "奶蛙：「死去妖兽，三日后再度现世。大境界压制真实不虚：境界差距过大，你的攻击大幅衰减，承受伤害成倍暴涨。不要白白送掉性命。」",
+        "小贴士: 开战消耗15点精力。血量告急吞疗伤丹，灵力枯竭服回灵丹……莫要学吾硬抗伤害。凡人不配懂你的使命。",
+    },
+    // [4] 宗门地位
+    {
+        "奶蛙（慢悠悠晃了晃小小的脑袋）：「宗门地位，便是登天之梯：杂役 → 外门 → 内门 → 亲传 → 内门执事 → 核心长老 → 峰主 → 宗主候选 → 宗主 → 太上长老！」",
+        "奶蛙：「晋升考核kaohe前往淬体演武场。外门升内门，筑基对战赵青峰；内门升亲传，需金丹修为，且一门四艺熟练度达到初级1000，再击败金丹虚影。」",
+        "奶蛙：「地位提升，前往宗门大殿寻李执事 monthly领取月例。三十日为一月，内门弟子可得1000灵石！」",
+        "奶蛙：「地位亦解锁宿命主线。唯有成为亲传弟子，宗主才会正视于你，宏大故事方才启幕。我和你们不一样，你的道，与众不同。」",
+        "小贴士: cuti淬体同样在演武场。耗费200灵石+30精力换取1点体质。肉身强横，方能苟活于世。",
+    },
+    // [5] 四艺百艺阁
+    {
+        "奶蛙（肚子抖动，发出咕叽咕叽的诡异声响）：「百艺阁三堂一堂不可荒废！炼丹 alchemy <丹方1-6>：淬体、聚气、养神、启悟、培元、精工六大丹方。」",
+        "奶蛙：「炼丹消耗一株灵草（妖兽山脉外围每日刷新3株）加一枚兽核。炼丹炸炉亦不会全盘皆输，留存药渣。集齐10枚药渣，可combine合成止血散！」",
+        "奶蛙：「炼器 forge：精铁矿石搭配兽核锻造法器，失败产出铁渣；画符 fu：两张符纸炼制破障符/御灵符，当日攻击或减伤提升30。」",
+        "奶蛙：「手艺看熟练度：学徒→初级1000→中级2000→高级4000→大丹师6000→丹王8000→丹圣10000。品级越高，炸炉概率越低，越容易炼出极品。」",
+        "奶蛙：「亲传考核要看四艺水准。精工丹可同步提升四门手艺熟练度，你应当懂得其中利害。」",
+        "小贴士: 丹药分下中上极品四阶。丹药耐药每日清零，上等丹药留到生死关头再用。炼丹不只是炼药，这是一场对天地灵气的跨维度实验。",
+    },
+    // [6] 灵兽契约
+    {
+        "奶蛙（绿油油的蛙眼望向远方，语调幽幽冥冥）：「beast查看灵兽囿异兽：青瞳灵兔（修炼+2%）、铁脊黑獠（体质+5）、风啸云狼（逃跑+20%）、碧水灵鳄（受伤-5%）、焚天焰狮（攻击+8%）、九霄玄麟（全属性+10）。」",
+        "奶蛙：「contract <编号>缔结契约！御兽等级越高契约成功率越高。契约成功增加200熟练度；失败亦可得50熟练度。吾，称之为越挫越勇。」",
+        "小贴士: 一头焚天焰狮带来攻击加成，可以省去你无数苦功。不要轻视这些生灵。都说山林深处有嘉豪，你且往密林之中寻一寻。",
+    },
+    // [7] 藏宝阁
+    {
+        "奶蛙（视线飘忽，望向藏宝阁方向）：「shop浏览货架，buy <编号/名称>购入物件，sell <背包编号>变卖物资。钱掌柜只认灵石。多多积攒灵石。」",
+        "奶蛙：「灵石获取途径：月例俸禄、变卖各类材料（兽核、药渣、铁渣皆可换钱）、出售多余法器。丹药、秘籍、法器，货架应有尽有。」",
+        "奶蛙：「《丹道真解》一类秘籍，使用直接增长修为。看似挥霍……实则收益匪浅。」",
+        "小贴士: 背包仅有50格容量。丹药可以堆叠不占格子，材料记得及时清理。世间金银皆是虚妄，但灵石除外。",
+    },
+    // [8] 主线剧情
+    {
+        "奶蛙（声调骤然低沉，氛围感拉满）：「story随时阅览主线《沧渊遗恨·正邪辨》进度与前置条件。去往何处、需要何物、还差多少尽数写明。条件达成，再次输入story即可推动故事走向。」",
+        "奶蛙：「主线剧情，待你成为亲传弟子方才开启。前路既定：苦修修为 → 通过考核 → 晋升亲传。」",
+        "小贴士: 推进剧情需要四处奔走：宗主书房、祖师堂、边境大营……home传送至大殿附近再行进，省去跋涉劳苦。十三点钟声敲响，属于你的宿命篇章就此开启。",
+    },
+    // [9] 地图探索
+    {
+        "奶蛙（微微扬起小小的头颅，姿态傲慢又诡异）：「map展开舆图！宗门大殿为天地中心，六个方向连通各处。妖兽山脉坐落灵兽囿北侧，一层一层向内深入。」",
+        "奶蛙：「部分通路设有境界枷锁：外围炼气、内围筑基、核心金丹、禁地元婴。境界不足，道路不会为你敞开。」",
+        "奶蛙：「游历世间可遇机缘。初入某些隐秘之地，或许邂逅灵气漩涡、上古传承，白得修为。灵兽囿的老猎户口中，藏有秘境入口的秘闻。」",
+        "奶蛙：「弟子居所萧辰、山脉内围楚狂、百艺阁林婉儿、灵兽囿孟野，皆是不凡之人。talk <名字>与他们交谈，必有裨益。」",
+        "小贴士: 迷失道路就map，想要归家就home。吾的识图本领，宗门第一……自我册封。",
+    },
+};
+
+static const std::vector<const char*> g_tut_end = {
+    "奶蛙（臃肿大肚子蹭过地面，缓缓滚向阴影角落）：「记住吾的三句箴言：勤用train、多多save、不要招惹钱掌柜。哈哈哈哈……祝你终得飞升。黑帽衫束脚裤，我叫嘉豪你记住。我的存在，会让你感到害怕吗。」",
+    "（阴影里只剩一对幽幽发亮的绿色蛙眼，静静注视着你）",
+};
+
+static const std::vector<const char*> g_tut_unknown = {
+    "奶蛙（小脑袋歪向一边，碧绿大圆眼直勾勾死死盯着你）：「吾无法理解你的话语……报上数字便可。我的存在，会让你感到害怕吗。豪到你了吗。」",
+};
+
+static void print_tut_menu() {
+    int w = display_width("奶蛙开课啦");
+    for (const char* it : g_menu_items) w = std::max(w, display_width(it));
+    auto bar = [&](const char* l, const char* r) {
+        printf("%s%s%s\n", l, box_rep("─", w + 2).c_str(), r);
+    };
+    printf("\n");
+    bar("┌", "┐");
+    printf("│ %s │\n", pad_to_width("奶蛙开课啦", w).c_str());
+    bar("├", "┤");
+    for (const char* it : g_menu_items)
+        printf("│ %s │\n", pad_to_width(it, w).c_str());
+    bar("└", "┘");
+    printf("\n");
+}
+
+static void run_tutorial(Player* player) {
     (void)player;
-    printf("\n══════════ 奶龙 · 新手教程 ══════════\n");
-    printf("奶龙扑棱着翅膀，热心地给你讲起修仙入门：\n\n");
+    // 第一次：完整开场；之后再次进入只弹菜单
+    if (!g_tutorial_opened) {
+        g_tutorial_opened = true;
+        for (const char* ln : g_tut_open) say_wait(ln);
+    }
 
-    printf("【基础指令】\n");
-    printf("  help        查看所有命令\n");
-    printf("  look / l    查看当前房间（出口、可对话/可攻击NPC、你能做的事）\n");
-    printf("  status      查看自身状态\n");
-    printf("  home / h    直接传送回个人主页（战斗中不可用）\n");
-    printf("  save        保存游戏（记得经常存档！）\n\n");
+    while (true) {
+        print_tut_menu();
+        printf("请报上数字（直接输入数字）或退出指导（q）：");
+        std::string line;
+        std::getline(std::cin, line);
 
-    printf("【修炼与突破】\n");
-    printf("  train       打坐修炼，修为+20（只能在传功讲堂或个人主页）\n");
-    printf("  breakthrough/bt  修为足够时突破境界\n");
-    printf("  精力不够时：先 rest 休息，再 sleep 进入下一天恢复\n\n");
-
-    printf("【主线剧情】\n");
-    printf("  story       查看当前主线进度与触发条件\n");
-    printf("  达到宗门地位「亲传弟子」后，输入 story 即可开启主线\n\n");
-
-    printf("【各境界能做什么】\n");
-    printf("  炼气期  外门弟子：妖兽山脉外围历练、学习四艺\n");
-    printf("  筑基期  可到演武场 kaohe 参加内门考核（挑战赵青峰）\n");
-    printf("  金丹期  可到演武场 kaohe 参加亲传考核（长老会审），开启主线\n");
-    printf("  元婴期  内门执事，可向长老呈报边境战事\n");
-    printf("  化神期  核心长老 / 炼虚期 峰主 / 合体期 宗主候选\n");
-    printf("  大乘期  宗主 / 渡劫飞升 太上长老\n\n");
-
-    printf("【NPC 与战斗】\n");
-    printf("  talk <名字> 与当前房间的NPC对话\n");
-    printf("  fight <名字> 与妖兽战斗\n");
-    printf("  可攻击NPC（妖兽，出没于妖兽山脉）：\n");
-    printf("    尖刺豪猪、腐爪灰狼 / 雾影毒蟒、岩甲巨熊 /\n");
-    printf("    烈焰魔猿 / 幻海魔蛟\n");
-    printf("  不可攻击（功能NPC，只可 talk）：钱掌柜、墨长老、\n");
-    printf("    铁武师、苏玄、老猎户、李执事\n\n");
-    printf("祝你在青云宗修行顺利！\n");
-    printf("══════════════════════════════════════\n\n");
+        if (line == "q" || line == "Q") {
+            for (const char* ln : g_tut_end) say_wait(ln);
+            return;
+        }
+        int idx = 0;
+        try { idx = std::stoi(line); } catch (...) { idx = 0; }
+        if (idx >= 1 && idx <= 9) {
+            for (const char* ln : g_tut_blocks[idx - 1]) say_wait(ln);
+        } else {
+            for (const char* ln : g_tut_unknown) say_wait(ln);
+        }
+    }
 }
 
 static void cmd_talk(Player* player, const std::string& args) {
     if (args.empty()) {
-        printf("用法: talk <NPC名字>（用 look 查看当前房间的NPC）\n");
+        printf("用法: talk <NPC名字>（用 l 查看当前房间的NPC）\n");
         return;
     }
     Room* room = room_get(player->current_room_id);
@@ -386,25 +521,40 @@ static void cmd_talk(Player* player, const std::string& args) {
         return;
     }
 
-    if (target->name == "奶龙") {
-        print_tutorial(player);
+    // 新手引导蛙：第一次进完整开场，之后只弹菜单
+    if (target->name == "奶蛙") {
+        run_tutorial(player);
         return;
     }
 
-    printf("\n【%s】%s\n", target->name.c_str(), target->desc.c_str());
-    // 主线前铺垫墨阳子（欲抑先扬）
-    const char* fore = (player->story_phase < 7)
-                       ? npc_foreshadow_line(target) : nullptr;
-    if (fore) {
-        printf("%s道：「%s」\n", target->name.c_str(), fore);
+    // 功能NPC：两个对话块轮流触发（功能块=功能指引+日常闲聊；剧情块=剧情铺垫）
+    const NpcDialogue* dlg = find_npc_dialogue(target->name);
+    if (dlg) {
+        int n = g_talk_count[target->name]++;
+        printf("\n");
+        if (n % 2 == 0 || player->story_phase >= 7) {
+            say_wait(std::string("【") + target->name + "】" + dlg->guide);
+            say_wait(std::string("【") + target->name + "】" + dlg->chat);
+        } else {
+            say_wait(std::string("【") + target->name + "】" + dlg->foreshadow);
+        }
+        printf("\n");
+        return;
     }
-    const char* hint = npc_interact_hint(target);
-    if (hint) {
-        printf("它对你说道：「%s」\n", hint);
-    } else if (target->type == NPCType::MONSTER) {
+
+    // 主线NPC伏笔（欲抑先扬，主线揭露前）
+    if (player->story_phase < 7) {
+        const char* fore = npc_story_foreshadow(target->name);
+        if (fore) {
+            printf("\n【%s】%s\n\n", target->name.c_str(), fore);
+            return;
+        }
+    }
+
+    // 可攻击妖兽提示
+    if (target->type == NPCType::MONSTER) {
         printf("它恶狠狠地盯着你，看起来可以 fight 与之战斗。\n");
     }
-    printf("\n");
 }
 
 static void cmd_inventory(Player* player, const std::string& args) {
@@ -787,27 +937,26 @@ static void game_loop() {
 // ===== 注册内置命令 =====
 
 static void register_builtin_commands() {
-    cmd_register("help",     {},       cmd_help,         "显示所有命令");
-    cmd_register("look",     {"l"},    cmd_look,         "查看当前房间");
-    cmd_register("move",     {},             cmd_move, "移动 (move <w/s/a/d/u/down>)");
-    cmd_register("north",    {"w"},          cmd_go_north, "向北移动 (W)");
-    cmd_register("south",    {"s"},          cmd_go_south, "向南移动 (S)");
-    cmd_register("west",     {"a"},          cmd_go_west,  "向西移动 (A)");
-    cmd_register("east",     {"d"},          cmd_go_east,  "向东移动 (D)");
-    cmd_register("up",       {"u"},          cmd_go_up,    "向上移动 (U)");
-    cmd_register("down",     {},             cmd_go_down,  "向下移动 (down)");
-    cmd_register("status",   {"stat", "me"}, cmd_status, "查看自身状态");
-    cmd_register("save",     {},       cmd_save,         "保存游戏");
-    cmd_register("quit",     {"exit"}, cmd_quit,         "退出游戏");
-    cmd_register("load",     {},       nullptr,          "加载存档 (load <道号>)");
-    cmd_register("breakthrough", {"bt"}, cmd_breakthrough, "尝试突破境界");
-    cmd_register("train", {"dazuo"}, cmd_train, "打坐修炼，修为+20（传功讲堂/个人主页）");
-    cmd_register("home", {"h"}, cmd_home, "传送回个人主页 (home)");
-    cmd_register("talk",     {"liaotian", "chat"}, cmd_talk, "与当前房间NPC对话 (talk <名字>)");
-    cmd_register("inventory", {"i", "bag"}, cmd_inventory, "查看背包");
-    cmd_register("get",      {"pick"}, cmd_get,          "拾取物品 (get <名称/编号>)");
-    cmd_register("drop",     {},       cmd_drop,         "丢弃物品 (drop <背包编号>)");
-    cmd_register("use",      {},       cmd_use,          "使用物品 (use <背包编号>)");
+    cmd_register("help",  {},       cmd_help,         "显示所有命令");
+    cmd_register("l",     {},       cmd_look,         "查看当前房间");
+    cmd_register("w",     {},       cmd_go_north,     "向北移动");
+    cmd_register("s",     {},       cmd_go_south,     "向南移动");
+    cmd_register("a",     {},       cmd_go_west,      "向西移动");
+    cmd_register("d",     {},       cmd_go_east,      "向东移动");
+    cmd_register("up",    {},       cmd_go_up,        "向上移动");
+    cmd_register("down",  {},       cmd_go_down,      "向下移动");
+    cmd_register("me",    {},       cmd_status,       "查看自身状态");
+    cmd_register("save",  {},       cmd_save,         "保存游戏");
+    cmd_register("exit",  {},       cmd_quit,         "退出游戏");
+    cmd_register("load",  {},       nullptr,          "加载存档 (load <道号>)");
+    cmd_register("bt",    {},       cmd_breakthrough, "尝试突破境界");
+    cmd_register("train", {},       cmd_train,        "打坐修炼，修为+20（传功讲堂/个人主页）");
+    cmd_register("home",  {},       cmd_home,         "传送回个人主页");
+    cmd_register("talk",  {},       cmd_talk,         "与当前房间NPC对话 (talk <名字>)");
+    cmd_register("i",     {},       cmd_inventory,    "查看背包");
+    cmd_register("get",   {},       cmd_get,          "拾取物品 (get <名称/编号>)");
+    cmd_register("drop",  {},       cmd_drop,         "丢弃物品 (drop <背包编号>)");
+    cmd_register("use",   {},       cmd_use,          "使用物品 (use <背包编号>)");
 }
 
 // ===== 入口 =====
@@ -863,6 +1012,8 @@ int main() {
         getchar(); // 吃掉换行
     }
 
+    bool is_new_game = false;
+
     switch (choice) {
     case 1:
         g_player = create_character();
@@ -870,6 +1021,7 @@ int main() {
             printf("创建角色失败，程序退出。\n");
             goto cleanup;
         }
+        is_new_game = true;
         break;
     case 2: {
         std::string name;
@@ -900,6 +1052,9 @@ int main() {
             printf("当前所在: %s\n", start_room->name.c_str());
         }
     }
+
+    // 新角色首次进入：自动播放新手指导开场（之后 talk 奶蛙 只显示菜单）
+    if (is_new_game) run_tutorial(g_player);
 
     // 主循环
     game_loop();

@@ -78,7 +78,7 @@ enum NpcId {
     NPC_MENG      = 304,   // 孟野（灵兽囿）
 
     // 新手引导 NPC
-    NPC_NAILONG   = 508,   // 奶龙（个人主页，新手教程）
+    NPC_NAILONG   = 508,   // 奶蛙（个人主页，新手教程）
 };
 
 // ===== 双向连接两个房间 =====
@@ -166,36 +166,36 @@ static void init_npcs() {
     if ((n = npc_get(NPC_DRAGON))) { n->stun_chance = 30; }
 
     // ---- 常驻功能 NPC ----
-    npc_create(NPC_QIAN, "钱掌柜", "藏宝阁负责人，精明市侩，认灵石不认人。",
+    npc_create(NPC_QIAN, "钱掌柜", "",
                NPCType::MERCHANT, RealmLevel::FOUNDATION,
                800, 50, 30, 0, 0, -1);
-    npc_create(NPC_MO, "墨长老", "传功讲堂主讲，古板严谨，极度看重悟性。",
+    npc_create(NPC_MO, "墨长老", "",
                NPCType::ELDER, RealmLevel::GOLDEN_CORE,
                1500, 90, 50, 0, 0, -1);
-    npc_create(NPC_TIE, "铁武师", "淬体演武场武技教习，豪爽粗犷，崇尚肉身强度。",
+    npc_create(NPC_TIE, "铁武师", "",
                NPCType::ELDER, RealmLevel::FOUNDATION,
                1000, 70, 40, 0, 0, -1);
-    npc_create(NPC_SU, "苏玄", "百艺阁主事，精通四艺，温和儒雅。",
+    npc_create(NPC_SU, "苏玄", "",
                NPCType::ELDER, RealmLevel::GOLDEN_CORE,
                1200, 80, 45, 0, 0, -1);
-    npc_create(NPC_HUNTER, "老猎户", "灵兽囿管事，高级御兽师，与灵兽心意相通。",
+    npc_create(NPC_HUNTER, "老猎户", "",
                NPCType::QUEST_GIVER, RealmLevel::GOLDEN_CORE,
                1500, 95, 50, 0, 0, -1);
-    npc_create(NPC_LI, "李执事", "宗门大殿庶务执事，公正刻板，按章办事。",
+    npc_create(NPC_LI, "李执事", "",
                NPCType::QUEST_GIVER, RealmLevel::GOLDEN_CORE,
                1200, 80, 45, 0, 0, -1);
 
     // ---- 榜单常驻 NPC ----
-    npc_create(NPC_XIAO, "萧辰", "宗主亲传大弟子，元婴期巅峰，常年闭关。",
+    npc_create(NPC_XIAO, "萧辰", "",
                NPCType::ELDER, RealmLevel::NASCENT_SOUL,
                3000, 220, 110, 0, 0, -1);
     npc_create(NPC_CHU, "楚狂", "执法长老亲传，化神初期，战斗狂人。",
                NPCType::ELDER, RealmLevel::SPIRIT_TRANS,
                5000, 300, 140, 0, 0, -1);
-    npc_create(NPC_LIN, "林婉儿", "丹道长老孙女，高级丹师，常免费炼制低阶丹药。",
+    npc_create(NPC_LIN, "林婉儿", "",
                NPCType::MERCHANT, RealmLevel::FOUNDATION,
                900, 60, 35, 0, 0, -1);
-    npc_create(NPC_MENG, "孟野", "御兽长老亲传，中级御兽师，契约风啸云狼。",
+    npc_create(NPC_MENG, "孟野", "",
                NPCType::QUEST_GIVER, RealmLevel::FOUNDATION,
                1100, 85, 45, 0, 0, -1);
 
@@ -215,14 +215,14 @@ static void init_npcs() {
     npc_create(507, "巡逻妖将", "边境巡逻的妖怪将领，魔族下属。",
                NPCType::MONSTER, RealmLevel::NASCENT_SOUL, 1400, 160, 50, 900, 200, -1);
 
-    // ---- 新手引导 NPC：奶龙 ----
-    npc_create(NPC_NAILONG, "奶龙", "一只圆滚滚的小龙，会热心教你如何在宗门安身立命。",
+    // ---- 新手引导 NPC：奶蛙 ----
+    npc_create(NPC_NAILONG, "奶蛙", "",
                NPCType::QUEST_GIVER, RealmLevel::MORTAL, 500, 5, 5, 0, 0, -1);
 
     // ---- 晋升考核 NPC（四改意见：常驻演武场，由 kaohe 发起考核）----
-    npc_create(509, "赵青峰", "内门十大弟子之首，筑基期圆满，持有青锋灵剑。骄傲但公正，绝不手下留情。",
+    npc_create(509, "赵青峰", "",
                NPCType::MONSTER, RealmLevel::FOUNDATION, 420, 68, 30, 0, 0, -1);
-    npc_create(510, "金丹虚影", "三大长老以灵力凝聚的金丹期虚影，用于亲传考核最后一关。",
+    npc_create(510, "金丹虚影", "",
                NPCType::MONSTER, RealmLevel::GOLDEN_CORE, 800, 120, 40, 0, 0, -1);
 }
 
@@ -375,7 +375,7 @@ static void verify_connectivity() {
 // ===== 摆放 NPC =====
 static void place_npcs() {
     // 功能 NPC
-    room_add_npc(ROOM_HOME,     NPC_NAILONG); // 个人主页：奶龙（新手教程）
+    room_add_npc(ROOM_HOME,     NPC_NAILONG); // 个人主页：奶蛙（新手教程）
     room_add_npc(ROOM_TREASURY, NPC_QIAN);   // 藏宝阁：钱掌柜
     room_add_npc(ROOM_LECTURE,  NPC_MO);     // 传功讲堂：墨长老
     room_add_npc(ROOM_ARENA,    NPC_TIE);    // 淬体演武场：铁武师
@@ -426,40 +426,40 @@ static void cmd_map(Player* player, const std::string& args) {
     Room* cur = room_get(player->current_room_id);
 
     printf("\n════════════════ 青云宗 · 世界地图 ════════════════\n");
-    printf("  方向键：W↑北   S↓南   A←西   D→东\n");
-    printf("         u = 上楼    down = 下楼\n");
+    printf("  方向键：w↑北   s↓南   a←西   d→东\n");
+    printf("         up = 上楼    down = 下楼\n");
     printf("──────────────────────────────────────────────────\n\n");
 
     printf("  【宗门大殿】(8) —— 中央枢纽\n");
     printf("   │\n");
-    printf("   ├─ W(北) → 传功讲堂(3)\n");
-    printf("   ├─ D(东) → 藏宝阁(4)\n");
-    printf("   ├─ S(南) → 个人主页(1)\n");
-    printf("   │           └─ S(南) → 弟子居所(2)\n");
-    printf("   │                        └─ S(南) → 宗门山门(21)\n");
-    printf("   │                                     └─ S(南) → 大殿广场(22)\n");
-    printf("   │                                                  ├─ D(东) → 宗门大典(24)\n");
-    printf("   │                                                  └─ S(南) → 返宗密林(20)\n");
-    printf("   │                                                               └─ S(南) → 落风谷(18)\n");
-    printf("   │                                                                            ├─ D(东) → 落风谷山村(19)\n");
-    printf("   │                                                                            └─ S(南) → 边境大营(23)\n");
-    printf("   ├─ A(西) → 淬体演武场(5)\n");
-    printf("   │           └─ S(南) → 百艺阁(6)\n");
-    printf("   │                        ├─ D(东) → 灵兽囿(7)\n");
-    printf("   │                        │           └─ W(北) → 妖兽山脉·外围(9)  [炼气期]\n");
-    printf("   │                        │                        └─ W(北) → 内围(10) [筑基期]\n");
-    printf("   │                        │                                     └─ W(北) → 核心(11) [金丹期]\n");
-    printf("   │                        │                                                  ├─ W(北) → 禁地(12) [元婴期]\n");
-    printf("   │                        │                                                  └─ D(东) → 秘洞(17)\n");
-    printf("   │                        └─ S(南) → 丹道长老居所(16)\n");
-    printf("   │                                     └─ D(东) → 祖师堂(15)\n");
-    printf("   ├─ u(上楼)  → 宗主书房(13)\n");
+    printf("   ├─ w(北) → 传功讲堂(3)\n");
+    printf("   ├─ d(东) → 藏宝阁(4)\n");
+    printf("   ├─ s(南) → 个人主页(1)\n");
+    printf("   │           └─ s(南) → 弟子居所(2)\n");
+    printf("   │                        └─ s(南) → 宗门山门(21)\n");
+    printf("   │                                     └─ s(南) → 大殿广场(22)\n");
+    printf("   │                                                  ├─ d(东) → 宗门大典(24)\n");
+    printf("   │                                                  └─ s(南) → 返宗密林(20)\n");
+    printf("   │                                                               └─ s(南) → 落风谷(18)\n");
+    printf("   │                                                                            ├─ d(东) → 落风谷山村(19)\n");
+    printf("   │                                                                            └─ s(南) → 边境大营(23)\n");
+    printf("   ├─ a(西) → 淬体演武场(5)\n");
+    printf("   │           └─ s(南) → 百艺阁(6)\n");
+    printf("   │                        ├─ d(东) → 灵兽囿(7)\n");
+    printf("   │                        │           └─ w(北) → 妖兽山脉·外围(9)  [炼气期]\n");
+    printf("   │                        │                        └─ w(北) → 内围(10) [筑基期]\n");
+    printf("   │                        │                                     └─ w(北) → 核心(11) [金丹期]\n");
+    printf("   │                        │                                                  ├─ w(北) → 禁地(12) [元婴期]\n");
+    printf("   │                        │                                                  └─ d(东) → 秘洞(17)\n");
+    printf("   │                        └─ s(南) → 丹道长老居所(16)\n");
+    printf("   │                                     └─ d(东) → 祖师堂(15)\n");
+    printf("   ├─ up(上楼)  → 宗主书房(13)\n");
     printf("   └─ down(下楼) → 大殿文卷室(14)\n");
 
     printf("\n  你当前所在: %s\n", cur ? cur->name.c_str() : "未知");
-    printf("  提示：输入 look 可查看当前房间所有出口及对应方向键\n");
+    printf("  提示：输入 l 可查看当前房间所有出口及对应方向键\n");
     printf("\n  【常驻 NPC 一览】\n");
-    printf("  个人主页(1)：奶龙              传功讲堂(3)：墨长老\n");
+    printf("  个人主页(1)：奶蛙              传功讲堂(3)：墨长老\n");
     printf("  藏宝阁(4)：钱掌柜              淬体演武场(5)：铁武师、赵青峰、金丹虚影\n");
     printf("  百艺阁(6)：苏玄、林婉儿        灵兽囿(7)：老猎户、孟野\n");
     printf("  宗门大殿(8)：李执事            弟子居所(2)：萧辰\n");

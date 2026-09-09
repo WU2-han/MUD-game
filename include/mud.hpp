@@ -346,9 +346,9 @@ inline const char* dir_cn_name(Direction dir) {
     return (idx >= 0 && idx < 6) ? names[idx] : "未知";
 }
 
-// 方向对应的移动键位（WASD 布局：W↑北  S↓南  A←西  D→东，U上楼，down下楼）
+// 方向对应的移动键位（w↑北  s↓南  a←西  d→东，up上楼，down下楼）
 inline const char* dir_key_name(Direction dir) {
-    static const char* names[] = { "W", "S", "D", "A", "U", "down" };
+    static const char* names[] = { "w", "s", "d", "a", "up", "down" };
     int idx = static_cast<int>(dir);
     return (idx >= 0 && idx < 6) ? names[idx] : "?";
 }
