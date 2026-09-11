@@ -4,7 +4,7 @@
 #include <ctime>
 #include <cstdio>
 #include <algorithm>
-std::vector<RankItem> g_rank_list;
+
 
 static void cmd_b_fight(Player* player, const std::string& args);
 static void cmd_b_meditate(Player* player, const std::string& args);
@@ -19,7 +19,7 @@ static void combat_module_init()
     cmd_register("bmeditate", {"bmed"}, cmd_b_meditate,
         "B模块打坐修炼，获得修为并恢复HP、MP");
 }
-cmd_register("rank", {"排行榜"}, cmd_rank, "rank — 查看江湖战力排行榜");
+
     cmd_register("challenge", {"挑战赵青峰"}, cmd_challenge_zhao,
         "challenge — 筑基期挑战赵青峰，打赢晋升内门弟子");
 }
@@ -65,59 +65,7 @@ int meditate_b(Player* player)
     printf("当前修为: %d / %d\n", player->exp, player->exp_to_next);
     return gain_exp;
 }
-//==================== 排行榜 ====================
-int calc_player_power(Player* p)
-{
-    int hp = p->max_hp;
-    int mp = p->max_mp;
-    int atk = p->atk;
-    int def = p->def;
-    int realm_lv = static_cast<int>(p->realm);
-    return hp + mp + atk * 3 + def * 2 + realm_lv * 100;
-}
 
-void rank_update(Player* p)
-{
-    int pow = calc_player_power(p);
-    for (auto &item : g_rank_list)
-    {
-        if (item.player_id == p->id)
-        {
-            item.power = pow;
-            item.name = p->name;
-            return;
-        }
-    }
-    RankItem new_item{};
-    new_item.player_id = p->id;
-    new_item.name = p->name;
-    new_item.power = pow;
-    g_rank_list.push_back(new_item);
-
-    std::sort(g_rank_list.begin(), g_rank_list.end(),
-        [](const RankItem& a, const RankItem& b) {
-            return a.power > b.power;
-        });
-}
-
-void rank_show(Player* p)
-{
-    p->output("\n====== 江湖战力排行榜 ======\n");
-    int show_max = 10;
-    for (int i = 0; i < g_rank_list.size() && i < show_max; i++)
-    {
-        p->output(std::to_string(i + 1) + ". " + g_rank_list[i].name
-            + " 战力:" + std::to_string(g_rank_list[i].power) + "\n");
-    }
-    p->output("============================\n");
-}
-
-static void cmd_rank(Player* player, const std::string& args)
-{
-    (void)args;
-    rank_update(player);
-    rank_show(player);
-}
 
 //==================== 赵青峰单挑修复bug ====================
 bool can_challenge_zhao(Player* p)
