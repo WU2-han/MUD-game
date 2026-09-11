@@ -640,7 +640,7 @@ static void cmd_alchemy(Player* player, const std::string& args) {
         }
     }
     if (!has_herb) {
-        printf("炼丹需要 1 株灵草（背包中当前没有）。可前往妖兽山脉外围采集。\n");
+        printf("炼丹需要 1 株灵草（背包中当前没有）。可前往妖兽山脉·外围采集，每日刷新3株。\n");
         return;
     }
 
@@ -720,15 +720,25 @@ static void cmd_forge(Player* player, const std::string& args) {
         printf("精力不足（需20），难以举锤锻器。可稍作休息(rest)或服用养神丹。\n");
         return;
     }
-    if (!consume_item(player, 230, 1)) {   // 精铁矿石
-        printf("炼器需要 1 块精铁矿石（可在藏宝阁购买，或妖兽山脉掉落）。\n");
+    // 先核对材料是否齐备，再统一扣除，避免缺料时吞掉已扣的材料（QIGAI 意见3）
+    auto count_item = [&](int id) {
+        int n = 0;
+        for (const auto& it : player->inventory) if (it.id == id) n += it.quantity;
+        return n;
+    };
+    if (count_item(230) < 1) {   // 精铁矿石
+        printf("炼器需要 1 块精铁矿石（可在藏宝阁购买）。\n");
         return;
     }
-    if (!consume_item(player, 224, 1) &&
-        !consume_item(player, 225, 1) &&
-        !consume_item(player, 226, 1)) {   // 任一兽核
-        printf("炼器需要 1 枚妖兽兽核（低阶/高阶/圣兽均可）。\n");
+    if (count_item(224) < 1 && count_item(225) < 1 && count_item(226) < 1) {   // 任一兽核
+        printf("炼器需要 1 枚妖兽兽核（击杀妖兽掉落：高阶妖兽产高阶兽核、圣兽产圣兽兽核）。\n");
         return;
+    }
+
+    consume_item(player, 230, 1);
+    if (!consume_item(player, 224, 1)) {
+        if (!consume_item(player, 225, 1))
+            consume_item(player, 226, 1);
     }
     player->stam -= 20;
 

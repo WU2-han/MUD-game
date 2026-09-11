@@ -148,7 +148,7 @@ static void cmd_combine(Player* player, const std::string& args) {
     }
     const int cost = 10;
     if (count_item(player, 227) < cost) {
-        printf("药渣不足（需 %d 个，当前 %d 个）。炸炉产出或击杀妖兽可得药渣。\n",
+        printf("药渣不足（需 %d 个，当前 %d 个）。炼丹炸炉时可得药渣。\n",
                cost, count_item(player, 227));
         return;
     }

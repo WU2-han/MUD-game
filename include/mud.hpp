@@ -215,7 +215,8 @@ struct Room {
 // ===== 玩家结构体 =====
 struct Player {
     int id = 0;
-    std::string name;
+    std::string name;         // 道号（登录/存档唯一标识）
+    std::string real_name;    // 姓名（游戏内显示，可重复）
     std::string password;
     SpiritRoot spirit_root = SpiritRoot::NONE;
     RealmLevel realm = RealmLevel::MORTAL;
@@ -429,17 +430,24 @@ inline Direction dir_reverse(Direction dir) {
     return (idx >= 0 && idx < 6) ? rev[idx] : dir;
 }
 
-// ===== 修为计算 =====
-// 境界突破修为下限：炼气500/筑基1500/金丹3000/元婴4500/化神7500/炼虚10500/合体16000/大乘25000/渡劫35000
+// ===== 修为计算（对齐 QIGAI 修为/上限表）=====
+// 每次打坐修为：凡人20 炼气20 筑基25 金丹30 元婴45 化神75 炼虚105 合体160 大乘250 渡劫350
+inline int realm_train_exp(RealmLevel realm) {
+    static const int per_train[] = { 20, 20, 25, 30, 45, 75, 105, 160, 250, 350 };
+    int r = static_cast<int>(realm);
+    return (r >= 0 && r < 10) ? per_train[r] : 20;
+}
+
+// 突破当前小境界所需修为（上限）= 每次修为 × 该小境界修炼次数
+// 凡人：10/10/10/10；炼气及以上：25/50/75/100
 inline int realm_exp_required(RealmLevel realm, RealmStage stage) {
-    static const int base[] = { 100, 500, 1500, 3000, 4500, 7500, 10500, 16000, 25000, 35000 };
-    // 阶段系数：初期为下限的0.25、中期0.5、后期0.75、圆满1.0（对齐主线门槛）
-    static const float stage_mult[] = { 0.25f, 0.5f, 0.75f, 1.0f };
+    static const int mortal_count[] = { 10, 10, 10, 10 };
+    static const int stage_count[]  = { 25, 50, 75, 100 };
     int r = static_cast<int>(realm);
     int s = static_cast<int>(stage);
-    if (r < 0 || r >= 10) return 999999;
-    if (r == 0) return 100; // 凡人初始
-    return static_cast<int>(base[r] * stage_mult[s]);
+    if (r < 0 || r >= 10 || s < 0 || s > 3) return 999999;
+    int count = (r == 0) ? mortal_count[s] : stage_count[s];
+    return realm_train_exp(realm) * count;
 }
 
 // ===== 宗门地位 / 月例灵石 / 每日精力上限 =====

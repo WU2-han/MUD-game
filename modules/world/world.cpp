@@ -71,12 +71,6 @@ enum NpcId {
     NPC_HUNTER    = 205,   // 老猎户（灵兽囿）
     NPC_LI        = 206,   // 李执事（宗门大殿）
 
-    // 榜单常驻 NPC
-    NPC_XIAO      = 301,   // 萧辰（弟子居所闭关）
-    NPC_CHU       = 302,   // 楚狂（妖兽山脉）
-    NPC_LIN       = 303,   // 林婉儿（百艺阁）
-    NPC_MENG      = 304,   // 孟野（灵兽囿）
-
     // 新手引导 NPC
     NPC_NAILONG   = 508,   // 奶蛙（个人主页，新手教程）
 };
@@ -185,20 +179,6 @@ static void init_npcs() {
                NPCType::QUEST_GIVER, RealmLevel::GOLDEN_CORE,
                1200, 80, 45, 0, 0, -1);
 
-    // ---- 榜单常驻 NPC ----
-    npc_create(NPC_XIAO, "萧辰", "",
-               NPCType::ELDER, RealmLevel::NASCENT_SOUL,
-               3000, 220, 110, 0, 0, -1);
-    npc_create(NPC_CHU, "楚狂", "执法长老亲传，化神初期，战斗狂人。",
-               NPCType::ELDER, RealmLevel::SPIRIT_TRANS,
-               5000, 300, 140, 0, 0, -1);
-    npc_create(NPC_LIN, "林婉儿", "",
-               NPCType::MERCHANT, RealmLevel::FOUNDATION,
-               900, 60, 35, 0, 0, -1);
-    npc_create(NPC_MENG, "孟野", "",
-               NPCType::QUEST_GIVER, RealmLevel::FOUNDATION,
-               1100, 85, 45, 0, 0, -1);
-
     // ---- 主线剧情 NPC ----
     npc_create(501, "凌沧渊", "青云宗现任宗主，大乘期修为，丹武双绝，威严沉稳，眼光毒辣，极度护短。",
                NPCType::ELDER, RealmLevel::MAHAYANA, 20000, 500, 200, 0, 0, -1);
@@ -232,7 +212,7 @@ static void init_rooms() {
     room_create(ROOM_HOME, "个人主页",
         "你的住所。青瓦小院，灵气环绕。可在此修炼、休息、查看自身状态与宗门情况。");
     room_create(ROOM_DISCIPLE, "弟子居所",
-        "宗门弟子的居住区，院落错落有致。同门在此起居修行，萧辰等榜上人物亦在此闭关。");
+        "宗门弟子的居住区，院落错落有致。同门在此起居修行，环境清幽宜人。");
 
     // 宗门功能建筑
     room_create(ROOM_LECTURE, "传功讲堂",
@@ -387,12 +367,6 @@ static void place_npcs() {
     room_add_npc(ROOM_ARENA,    509);        // 淬体演武场：赵青峰（内门考核）
     room_add_npc(ROOM_ARENA,    510);        // 淬体演武场：金丹虚影（亲传考核）
 
-    // 榜单 NPC
-    room_add_npc(ROOM_DISCIPLE, NPC_XIAO);   // 萧辰（闭关）
-    room_add_npc(ROOM_MOUNT_IN, NPC_CHU);    // 楚狂（常驻妖兽山脉）
-    room_add_npc(ROOM_ART,      NPC_LIN);    // 林婉儿（百艺阁）
-    room_add_npc(ROOM_BEAST,    NPC_MENG);   // 孟野（灵兽囿）
-
     // 妖兽（妖兽山脉四层）
     room_add_npc(ROOM_MOUNT_OUT,  NPC_HOG);   // 外围：尖刺豪猪
     room_add_npc(ROOM_MOUNT_OUT,  NPC_WOLF);  // 外围：腐爪灰狼
@@ -461,8 +435,8 @@ static void cmd_map(Player* player, const std::string& args) {
     printf("\n  【常驻 NPC 一览】\n");
     printf("  个人主页(1)：奶蛙              传功讲堂(3)：墨长老\n");
     printf("  藏宝阁(4)：钱掌柜              淬体演武场(5)：铁武师、赵青峰、金丹虚影\n");
-    printf("  百艺阁(6)：苏玄、林婉儿        灵兽囿(7)：老猎户、孟野\n");
-    printf("  宗门大殿(8)：李执事            弟子居所(2)：萧辰\n");
+    printf("  百艺阁(6)：苏玄                灵兽囿(7)：老猎户\n");
+    printf("  宗门大殿(8)：李执事\n");
     printf("  妖兽山脉(9-12)：尖刺豪猪、腐爪灰狼、雾影毒蟒、岩甲巨熊、烈焰魔猿、幻海魔蛟\n");
     printf("  （主线剧情NPC随剧情推进在各场景现身）\n");
     printf("\n══════════════════════════════════════════════════\n\n");

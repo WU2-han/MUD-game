@@ -38,6 +38,7 @@ bool save_player(Player* player) {
     fp << "{\n";
     fp << "  \"id\": " << player->id << ",\n";
     fp << "  \"name\": \"" << player->name << "\",\n";
+    fp << "  \"real_name\": \"" << player->real_name << "\",\n";
     fp << "  \"password\": \"" << player->password << "\",\n";
     fp << "  \"spirit_root\": " << static_cast<int>(player->spirit_root) << ",\n";
     fp << "  \"realm\": " << static_cast<int>(player->realm) << ",\n";
@@ -166,6 +167,7 @@ Player* load_player(const std::string& name) {
         char key[64] = {0}, value[256] = {0};
         if (sscanf(trimmed.c_str(), " \"%[^\"]\": \"%[^\"]\"", key, value) == 2) {
             if (strcmp(key, "name") == 0) p->name = value;
+            else if (strcmp(key, "real_name") == 0) p->real_name = value;
             else if (strcmp(key, "password") == 0) p->password = value;
             else if (strcmp(key, "title") == 0) p->title = value;
             else if (strcmp(key, "tags") == 0) p->tags = value;

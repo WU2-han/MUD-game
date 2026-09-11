@@ -61,7 +61,10 @@ static void cmd_look(Player* player, const std::string& args) {
     };
     auto field = [&](const std::string& label, const std::string& value) {
         std::string line = label + value;
-        for (auto& ln : wrap_text_by_width(line, W)) {
+        std::string indent(display_width(label), ' ');   // 续行缩进，对齐标签后的内容
+        auto lines = wrap_text_by_width(line, W);
+        for (size_t i = 0; i < lines.size(); i++) {
+            std::string ln = (i == 0) ? lines[i] : indent + lines[i];
             printf("│ %s │\n", pad_to_width(ln, W).c_str());
         }
     };
@@ -75,22 +78,23 @@ static void cmd_look(Player* player, const std::string& args) {
     }
     hr("├", "┤", W + 2);
 
-    // 出口（带方向键）
+    // 出口（带方向键，每条独占一行，避免长列表换行错乱）
     {
-        std::string exits;
+        const std::string exit_label = "出口: ";
         bool has_exit = false;
         for (int d = 0; d < 6; d++) {
             if (room->exits[d].room_id <= 0) continue;
             Room* dest = room_get(room->exits[d].room_id);
             if (!dest) continue;
-            if (has_exit) exits += "  ";
-            exits += std::string(dir_cn_name(static_cast<Direction>(d))) + "["
-                   + dir_key_name(static_cast<Direction>(d)) + "] " + dest->name;
+            std::string e = std::string(dir_cn_name(static_cast<Direction>(d))) + "["
+                          + dir_key_name(static_cast<Direction>(d)) + "] " + dest->name;
             if (room->exits[d].locked)
-                exits += std::string("[需") + realm_name(room->exits[d].req_realm) + "]";
+                e += std::string("[需") + realm_name(room->exits[d].req_realm) + "]";
+            // 第一条带「出口:」标签，后续行用等宽空格对齐
+            field(has_exit ? std::string(display_width(exit_label), ' ') : exit_label, e);
             has_exit = true;
         }
-        field("出口: ", has_exit ? exits : "无");
+        if (!has_exit) field(exit_label, "无");
     }
 
     // NPC：分为「可对话」与「可攻击」两栏（三改意见：look 页面需明确区分）
@@ -166,7 +170,8 @@ static void cmd_status(Player* player, const std::string& args) {
     printf("\n╔%s╗\n", box_rep("═", W + 2).c_str());
     line("修仙者信息");
     bar();
-    line("姓名: " + player->name);
+    line("道号: " + player->name);
+    line("姓名: " + player->real_name);
     line("灵根: " + std::string(spirit_name(player->spirit_root)));
     line("境界: " + std::string(realm_name(player->realm)) + stage_name(player->stage));
     line("修为: " + std::to_string(player->exp) + " / " + std::to_string(player->exp_to_next));
@@ -255,10 +260,10 @@ static void cmd_train(Player* player, const std::string& args) {
         return;
     }
     player->stam -= 10;
-    // 修炼恢复 + 修为固定 +20（三改意见）
+    // 修炼恢复，修为按境界递增（对齐 QIGAI 修为/上限表）
     int hp_gain = player->max_hp / 10 + 10;
     int mp_gain = player->max_mp / 5 + 5;
-    int exp_gain = 20;
+    int exp_gain = realm_train_exp(player->realm);
 
     player->hp = std::min(player->hp + hp_gain, player->max_hp);
     player->mp = std::min(player->mp + mp_gain, player->max_mp);
@@ -288,10 +293,6 @@ struct NpcDialogue {
 };
 
 static const NpcDialogue g_npc_dialogues[] = {
-    {"萧辰",
-     "我是宗门大师兄萧辰，常年闭关苦修。弟子居所可静心打坐修炼、恢复状态，无人打扰，适合稳固修为、打磨根基。若无宗门事务缠身，潜心静修便是正道捷径。",
-     "修行一道，贵在持之以恒，切忌浮躁。宗门诸多弟子急于突破境界，却忽略根基打磨，最终修为滞涩难进。你初入亲传之列，当沉下心性，稳步修行。",
-     "玄阳宗墨阳子师伯，乃是正道少见的仁厚长者。与家师相交数十年，心系正道苍生，胸襟格局远超寻常宗主。平日多帮扶各宗弟子，是值得我辈敬仰追随的正道表率。"},
     {"墨长老",
      "老夫乃传功讲堂墨长老，执掌宗门讲道授课。你可在此聆听功法道义、参悟修行真谛，听课所得修为、悟性加成远超独自打坐。悟性出众者，还可获老夫专属指点。",
      "修行不止是堆砌修为，更在于悟道明理。诸多弟子修为暴涨，却心境浮躁、道心不稳，最终难登大道。勤听道、常思悟，方能稳步突破各大境界瓶颈。",
@@ -316,18 +317,10 @@ static const NpcDialogue g_npc_dialogues[] = {
      "在下苏玄，执掌百艺阁全域事务。阁内设丹房、炼器室、符堂，可修炼炼丹、炼器、画符各项技艺熟练度，累计互动次数达标，还可解锁技艺熟练度加成。",
      "修仙不止修炼修为战力，百艺傍身方能行稳致远。丹、器、符三道，熟能生巧，潜心打磨技艺，既能自给自足，也能在宗门占据一席之地。",
      "墨阳宗主与我宗宗主乃是八拜之交，两宗情谊深厚。上月他还特意遣人送来玄阳宗独家《聚火丹方》，与我互补丹道心得，毫无门户隔阂，胸襟令人钦佩。"},
-    {"林婉儿",
-     "我是林婉儿，擅长丹道修行，常驻百艺阁丹房。可为你解答丹道疑惑，日常也会免费炼制低阶丹药，助力各位师弟师妹打磨丹术、提升熟练度。",
-     "炼丹之道，贵在静心稳手。把控火候、配比药引，循序渐进，方能提升成丹品质。切莫急于求成，频繁炸炉只会损耗心神与药材。",
-     "墨阳师伯为人温和谦逊，时常交流丹道心得，分享珍稀丹方。一直鼎力扶持正道丹道发展，提携后辈修士，是极为温柔仁厚的长辈。"},
     {"老猎户",
      "老朽执掌灵兽囿，负责灵兽契约登记、御兽指导、秘境管控。你可在此契约低、中阶灵兽，提升御兽熟练度，御兽升品时，老朽可提供稀有灵兽出没线索。",
      "御兽之道，不在强行契约，而在心意相通。人与灵兽同心协力，方能发挥最强战力。多入灵兽囿磨合、参悟御兽诀，方可精进御兽造诣。",
      "墨阳宗主素来善待世间生灵，体恤灵兽、不嗜杀伐。平日也会提点各宗御兽弟子修行，引导众人与灵兽和睦共处，心怀仁爱，实属正道楷模。"},
-    {"孟野",
-     "我是孟野，专精御兽一道，常年驻守灵兽囿。可与你交流御兽技巧、灵兽契约心得，擅长磨合灵兽战力，探索灵兽秘境的各类诀窍。",
-     "契约灵兽重在适配，高阶灵兽虽强，心性不合也难以发挥实力。稳步提升御兽品级，循序渐进契约更强灵兽，才是御兽修行的正道。",
-     "听闻墨阳宗主素来推崇好生之德，约束门下弟子不滥杀灵兽、不妄造杀业。这般心怀仁善、恪守本心的格局，值得所有修士敬畏。"},
     {"李执事",
      "本座执掌宗门大殿所有庶务，负责月度灵石发放、弟子晋升受理、宗门任务派发、贡献统计。宗门大小规矩、晋升细则、任务奖惩，皆可向我咨询。",
      "宗门层级分明，各司其职。弟子勤勉修行、完成任务、积累贡献，方能稳步晋升、提升身份待遇，每月灵石月例与宗门权限也会随之提升。",
@@ -384,7 +377,7 @@ static const std::vector<const char*> g_tut_blocks[] = {
     },
     // [2] 修炼突破
     {
-        "奶蛙（瘫坐在地面，大肚子摊开贴地）：「train打坐，修为本源。一回增长20修为，兼回血回蓝，代价消耗10点精力。月光是铠甲，阴影是武器，修为圆满之时，便是你审判仙道之时。」",
+        "奶蛙（瘫坐在地面，大肚子摊开贴地）：「train打坐，修为本源。每次打坐修为随境界递增，兼回血回蓝，代价消耗10点精力。月光是铠甲，阴影是武器，修为圆满之时，便是你审判仙道之时。」",
         "奶蛙：「仅有两处可安心打坐：个人主页、传功讲堂。其余地方打坐，会被墨长老敲打头颅。此地，不可。」",
         "奶蛙：「精力耗竭该当如何？归家 rest小憩，一日一回，恢复50精力；或是sleep沉沉睡去，来日精力尽数回满。丹药耐药、休憩次数一并重置。」",
         "奶蛙：「修为积蓄圆满，执行 bt 冲破境界。自炼气起步直至大乘，每重境界分初期、中期、后期、圆满。」",
@@ -441,7 +434,7 @@ static const std::vector<const char*> g_tut_blocks[] = {
         "奶蛙（微微扬起小小的头颅，姿态傲慢又诡异）：「map展开舆图！宗门大殿为天地中心，六个方向连通各处。妖兽山脉坐落灵兽囿北侧，一层一层向内深入。」",
         "奶蛙：「部分通路设有境界枷锁：外围炼气、内围筑基、核心金丹、禁地元婴。境界不足，道路不会为你敞开。」",
         "奶蛙：「游历世间可遇机缘。初入某些隐秘之地，或许邂逅灵气漩涡、上古传承，白得修为。灵兽囿的老猎户口中，藏有秘境入口的秘闻。」",
-        "奶蛙：「弟子居所萧辰、山脉内围楚狂、百艺阁林婉儿、灵兽囿孟野，皆是不凡之人。talk <名字>与他们交谈，必有裨益。」",
+        "奶蛙：「传功讲堂墨长老、藏宝阁钱掌柜、演武场铁武师、百艺阁苏玄、灵兽囿老猎户、大殿李执事，皆是不凡之人。talk <名字>与他们交谈，必有裨益。」",
         "小贴士: 迷失道路就map，想要归家就home。吾的识图本领，宗门第一……自我册封。",
     },
 };
@@ -686,21 +679,29 @@ static SpiritRoot choose_spirit() {
 
 static Player* create_character() {
     std::string name;
+    std::string real_name;
     std::string password;
 
     printf("\n====== 创建修仙者 ======\n");
-    printf("请输入道号: ");
-    std::getline(std::cin, name);
 
-    if (name.empty()) {
-        printf("道号不能为空。\n");
-        return nullptr;
+    // 道号为登录/存档唯一标识：为空或与已有存档重名时重新输入，避免闪退
+    while (true) {
+        printf("请输入道号: ");
+        if (!std::getline(std::cin, name)) return nullptr;   // EOF/读取失败
+        if (name.empty()) {
+            printf("道号不能为空，请重新输入。\n");
+            continue;
+        }
+        if (save_player_exists(name)) {
+            printf("该道号已有存档，请更换一个道号重新输入。\n");
+            continue;
+        }
+        break;
     }
 
-    if (save_player_exists(name)) {
-        printf("道号已存在，请使用 load 命令加载存档。\n");
-        return nullptr;
-    }
+    printf("请输入姓名（游戏内显示，可与道号相同）: ");
+    std::getline(std::cin, real_name);
+    if (real_name.empty()) real_name = name;
 
     printf("请输入密码: ");
     std::getline(std::cin, password);
@@ -710,6 +711,7 @@ static Player* create_character() {
     Player* p = player_create(1, name, password);
     if (!p) return nullptr;
 
+    p->real_name = real_name;
     p->spirit_root = root;
 
     // 根据灵根调整初始属性
@@ -726,7 +728,8 @@ static Player* create_character() {
     }
 
     printf("\n创建成功！\n");
-    printf("道号: %s  灵根: %s\n", p->name.c_str(), spirit_name(p->spirit_root));
+    printf("道号: %s  姓名: %s  灵根: %s\n",
+           p->name.c_str(), p->real_name.c_str(), spirit_name(p->spirit_root));
     printf("HP: %d  MP: %d  攻击: %d  防御: %d\n",
            p->max_hp, p->max_mp, p->atk, p->def);
 
@@ -950,7 +953,7 @@ static void register_builtin_commands() {
     cmd_register("exit",  {},       cmd_quit,         "退出游戏");
     cmd_register("load",  {},       nullptr,          "加载存档 (load <道号>)");
     cmd_register("bt",    {},       cmd_breakthrough, "尝试突破境界");
-    cmd_register("train", {},       cmd_train,        "打坐修炼，修为+20（传功讲堂/个人主页）");
+    cmd_register("train", {},       cmd_train,        "打坐修炼（传功讲堂/个人主页）");
     cmd_register("home",  {},       cmd_home,         "传送回个人主页");
     cmd_register("talk",  {},       cmd_talk,         "与当前房间NPC对话 (talk <名字>)");
     cmd_register("i",     {},       cmd_inventory,    "查看背包");
@@ -1052,6 +1055,9 @@ int main() {
             printf("当前所在: %s\n", start_room->name.c_str());
         }
     }
+
+    // 输入约定（QIGAI 意见6）：只有出现「>」符号时才可直接输入指令
+    printf("【操作提示】只有屏幕出现「>」符号时，才能直接输入指令；其余情况请按回车键继续。\n\n");
 
     // 新角色首次进入：自动播放新手指导开场（之后 talk 奶蛙 只显示菜单）
     if (is_new_game) run_tutorial(g_player);
