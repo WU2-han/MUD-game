@@ -9,7 +9,7 @@
  *   → 序章养成（日常渗透，自由活动）
  *   → 第一章·师父率军出征 → 第二章·师父战死
  *   → 第三章~第七章·查寻真相（引导详见 story 文档）
- *   → 第八章·真相大白 → 养成时间2（修炼至大乘期）
+ *   → 第八章·真相大白 → 养成时间2（自由修炼，决战时机由玩家自行决定）
  *   → 最终决战（大殿广场输入 决战，玩家自行触发）
  *   → 胜利 = 主线完结（大字页 + 奶蛙/师父残魂对话，解锁飞升）
  *   → 失败 = 「拉完了」成就页（重来一世读档 / 嘉豪文案从头开始）
@@ -62,7 +62,7 @@ struct StoryStep {
     int r_spi = 0;       // 灵力奖励（置于末尾，旧步骤未写则默认 0）
 };
 
-// 最终决战所处 phase（养成时间2：真相大白后，修炼至大乘期再决战）
+// 最终决战所处 phase（养成时间2：真相大白后自由活动，决战时机由玩家自行决定）
 static const int PHASE_FINAL_DUEL = 23;
 
 static const StoryStep g_story[] = {
@@ -218,7 +218,7 @@ static const char* g_step_goals[] = {
     "星夜赶回宗门山门，向御兽长老了解宗门局势",
     "到藏宝阁付 500 灵石，请钱掌柜牵线清玄道长",
     "到妖兽山脉秘洞面见清玄道长，获取墨阳子亲笔罪证",
-    "真相大白！闭关修炼至【大乘期】，前往大殿广场输入 决战 与墨阳子了断！",
+    "真相大白！可前往大殿广场输入 决战 与墨阳子了断！（此战凶险，建议先养精蓄锐，但何时决战由你自己决定）",
 };
 static_assert(sizeof(g_step_goals) / sizeof(g_step_goals[0]) == g_story_count,
               "g_step_goals 与 g_story 条数不一致");
@@ -437,7 +437,7 @@ static void guide_next_hint(const Player* p) {
     }
     if (p->story_phase == PHASE_FINAL_DUEL) {
         printf("\n【任务引导】真相大白，最终决战在即！\n");
-        printf("  ▶ 闭关苦修，将境界修炼至【大乘期】（当前【%s】）\n", realm_name(p->realm));
+        printf("  ▶ 此战凶险（墨阳子为【大乘期】），建议先闭关苦修提升境界（当前【%s】）；何时决战由你决定\n", realm_name(p->realm));
         printf("  ▶ 前往大殿广场，输入 决战 触发最终决战（决战前系统会自动存档）\n");
         printf("  ⚠ 主线剧情期间飞升受限——击败墨阳子、剧情完结之后，方可突破飞升。\n");
         return;
@@ -802,13 +802,12 @@ void quest_start_final_duel(Player* player) {
         printf("墨阳子已不在此处……（他已被击败，无需再战）\n");
         return;
     }
-    // 境界门槛：大乘期及以上方有一战之力（⑨）
+    // 境界提示：不强制，决战时机由玩家自行决定（仅提醒实力悬殊）
     if (static_cast<int>(player->realm) < static_cast<int>(RealmLevel::MAHAYANA)) {
         printf("你立于【%s】，直面墨阳子周身翻涌的【大乘期】威压，只觉呼吸一窒——\n",
                realm_name(player->realm));
-        printf("此刻决战，无异于以卵击石。唯有臻至【大乘期】及以上，方有一战之力。\n");
-        printf("（先去闭关苦修，突破至大乘期再回来吧！输入 guide 查看养成指引。）\n");
-        return;
+        printf("此战实力悬殊，凶多吉少。但决战与否，全凭你自己决定。\n");
+        printf("（若想再养精蓄锐，可先闭关修炼(train)提升修为，稍后再输入 决战。）\n");
     }
 
     // 存档提示 + 自动存档（⑥：开始最终决斗之前给玩家存档提示）
@@ -886,7 +885,7 @@ static void cmd_story(Player* player, const std::string& args) {
     }
     if (player->story_phase == PHASE_FINAL_DUEL) {
         printf("你已集齐墨阳子的全部罪证，真相大白，决战在即。\n");
-        printf("（前往大殿广场，输入 决战 触发最终决战——此战需【大乘期】及以上修为，请先养精蓄锐！）\n");
+        printf("（前往大殿广场，输入 决战 触发最终决战——此战凶险，胜负难料；何时决战由你自己决定！）\n");
         return;
     }
     const StoryStep& s = g_story[player->story_phase];
@@ -917,16 +916,17 @@ static void guide_conditions(const Player* p, const StoryStep& s) {
     };
 
     if (p->story_phase == PHASE_FINAL_DUEL) {
-        bool good = static_cast<int>(p->realm) >= static_cast<int>(RealmLevel::MAHAYANA);
-        std::string t = "境界：需 ≥ 【大乘期】（当前【" + std::string(realm_name(p->realm)) + "】）";
-        if (!good) t += " —— 打坐修炼(train)提升修为，突破至大乘期";
-        chk(good, t);
         bool inroom = p->current_room_id == 22;
-        std::string t2 = "地点：需前往【大殿广场】（当前"
-                       + std::string(inroom ? "已在此" : "未在此") + "）";
-        chk(inroom, t2);
-        if (all_ok)
-            printf("  ✓ 条件已全部满足 —— 在广场输入 决战 触发最终决战！（决战前系统会自动存档）\n");
+        chk(inroom, "地点：需前往【大殿广场】（当前"
+                   + std::string(inroom ? "已在此" : "未在此") + "）");
+        if (static_cast<int>(p->realm) < static_cast<int>(RealmLevel::MAHAYANA))
+            printf("  ⚠ 境界低于【大乘期】（当前【%s】）——此战凶险，但决战与否由你自己决定；可先修炼(train)提升修为\n", realm_name(p->realm));
+        else
+            printf("  ✓ 境界已达【大乘期】及以上\n");
+        if (inroom)
+            printf("  ✓ 已在大殿广场 —— 输入 决战 即可触发最终决战！（决战前系统会自动存档）\n");
+        else
+            printf("  ▶ 前往大殿广场后，输入 决战 即可触发最终决战\n");
         return;
     }
 
@@ -1007,7 +1007,7 @@ static void guide_preview(const Player* p) {
 
     printf("【下一章前瞻】%s（%s）\n", next->name, next->days);
     if (next->first == PHASE_FINAL_DUEL) {
-        printf("  · 需境界 ≥ 【大乘期】（主线剧情中飞升受限，大乘期即当前上限）\n");
+        printf("  · 建议境界 ≥ 【大乘期】（不强制——决战时机由你自己决定，但墨阳子是大乘期）\n");
         printf("  · 含最终 BOSS 战：墨阳子（大乘期）——决战前系统自动存档，胜负不强制\n");
         return;
     }
@@ -1055,9 +1055,9 @@ static void cmd_guide(Player* player, const std::string& args) {
         printf("║ %s ║\n", pad_to_width("  进度 " + std::to_string(player->story_phase + 1) + " / " + std::to_string(g_story_count)
                      + " 步 · 游戏第 " + std::to_string(player->day) + " 天", 42).c_str());
         printf("╚%s╝\n", sep.c_str());
-        printf("\n【当前目标】闭关苦修，决战墨阳子！\n");
+        printf("\n【当前目标】养精蓄锐，决战墨阳子！\n");
         printf("  你已集齐墨阳子的全部罪证，真相大白，大仇只待清算。\n");
-        printf("  ▶ 修炼提升修为，将境界臻至【大乘期】（当前【%s】）\n", realm_name(player->realm));
+        printf("  ▶ 建议先提升修为（墨阳子为【大乘期】，当前【%s】）——但何时决战，由你自己决定\n", realm_name(player->realm));
         printf("  ▶ 前往大殿广场，输入 决战 触发最终决战（决战前系统自动存档）\n");
         printf("  ▶ 决战与寻常斗法无异，胜负全凭实力；战败亦可重来（重来一世）。\n");
         printf("\n【条件核查】\n");
