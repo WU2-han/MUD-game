@@ -81,6 +81,7 @@ bool save_player(Player* player) {
     fp << "  \"atk_buff\": " << player->atk_buff << ",\n";
     fp << "  \"def_buff\": " << player->def_buff << ",\n";
     fp << "  \"story_phase\": " << player->story_phase << ",\n";
+    fp << "  \"story_day0\": " << player->story_day0 << ",\n";
     fp << "  \"title\": \"" << player->title << "\",\n";
     fp << "  \"tags\": \"" << player->tags << "\",\n";
 
@@ -128,13 +129,9 @@ Player* load_player(const std::string& name) {
             return s.substr(start);
         }(line);
 
-        if (trimmed.empty() || trimmed[0] == '{' || trimmed[0] == '}' ||
-            trimmed[0] == '[' || trimmed[0] == ']' || trimmed[0] == ',')
-            continue;
+        if (trimmed.empty()) continue;
 
-        if (trimmed.find("\"inventory\"") != std::string::npos) { in_inv = true; continue; }
-        if (trimmed.find("\"skills\"") != std::string::npos) { in_skills = true; continue; }
-
+        // 数组元素行以 { 开头，须在跳过结构行之前解析，否则会被误跳过（导致背包/技能丢失）
         if (in_inv) {
             int id, qty;
             if (sscanf(trimmed.c_str(), "{\"id\": %d, \"qty\": %d}", &id, &qty) == 2) {
@@ -162,6 +159,14 @@ Player* load_player(const std::string& name) {
             if (trimmed.find(']') != std::string::npos) in_skills = false;
             continue;
         }
+
+        // 跳过结构行（顶层 {}、数组 [] 与逗号）
+        if (trimmed[0] == '{' || trimmed[0] == '}' ||
+            trimmed[0] == '[' || trimmed[0] == ']' || trimmed[0] == ',')
+            continue;
+
+        if (trimmed.find("\"inventory\"") != std::string::npos) { in_inv = true; continue; }
+        if (trimmed.find("\"skills\"") != std::string::npos) { in_skills = true; continue; }
 
         // 解析键值对
         char key[64] = {0}, value[256] = {0};
@@ -230,6 +235,7 @@ Player* load_player(const std::string& name) {
                         else if (k == "atk_buff") p->atk_buff = num;
                         else if (k == "def_buff") p->def_buff = num;
                         else if (k == "story_phase") p->story_phase = num;
+                        else if (k == "story_day0") p->story_day0 = num;
                     }
                 }
             }

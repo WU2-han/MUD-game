@@ -65,11 +65,36 @@ void cmd_execute(Player* player, const std::string& input) {
                        ? str_trim(trimmed.substr(space_pos + 1)) : "";
 
     Command* cmd = cmd_find(cmd_name);
-    if (cmd && cmd->handler) {
-        cmd->handler(player, args);
-    } else {
+    if (!cmd || !cmd->handler) {
         printf("未知指令: %s（输入 help 查看可用命令）\n", cmd_name.c_str());
+        return;
     }
+
+    // 主线剧情走剧情阶段：禁止自由活动（只能跟随引导推进剧情）
+    if (quest_story_locked(player)) {
+        // 白名单：移动/查看/保存/剧情引导/休息睡觉/变卖月例（补足灵石与天数门槛）
+        static const char* kStoryAllowed[] = {
+            "help", "l", "w", "s", "a", "d", "up", "down", "me", "i",
+            "save", "exit", "story", "guide", "map",
+            "sleep", "rest", "home", "sell", "monthly",
+            "决战", "决斗"
+        };
+        std::string lower = str_tolower(cmd_name);
+        bool allowed = false;
+        for (const char* a : kStoryAllowed)
+            if (lower == a) { allowed = true; break; }
+        if (!allowed) {
+            const char* tgt = quest_story_lock_target(player);
+            printf("你正身处主线剧情之中，无法自由行动！\n");
+            if (tgt)
+                printf("（请跟随引导前往【%s】，输入 story 推进剧情；输入 guide 查看当前指引）\n", tgt);
+            else
+                printf("（请跟随引导推进剧情；输入 guide 查看当前指引）\n");
+            return;
+        }
+    }
+
+    cmd->handler(player, args);
 }
 
 void cmd_show_all(Player* player) {

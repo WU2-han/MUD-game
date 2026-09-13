@@ -113,12 +113,24 @@ bool player_try_breakthrough(Player* player) {
         return false;
     }
 
+    // 主线剧情期间（含养成时间）飞升受限：境界止步大乘期，剧情完结方可飞升
+    if (player->realm == RealmLevel::MAHAYANA && player->stage >= RealmStage::PEAK
+        && !quest_story_completed(player)) {
+        printf("你立于【大乘期·圆满】，周身灵气翻涌到了极致，隐隐触及飞升的门槛——\n");
+        printf("却觉天地规则之间仍有一道无形的羁绊：师父大仇未报，宗门大劫未了。\n");
+        printf("此刻强行飞升，道心必然留下遗憾，恐生心魔。\n");
+        printf("（待你击败墨阳子、了却这段因果——主线剧情完结之后，方可突破飞升！）\n");
+        return false;
+    }
+
     // 消耗修为
     player->exp -= player->exp_to_next;
 
     // 进阶
     if (player->stage >= RealmStage::PEAK) {
-        if (player->realm < RealmLevel::MAHAYANA) {
+        // 大乘期圆满 → 渡劫飞升：仅在主线剧情完结（击败墨阳子）后开放
+        if (player->realm < RealmLevel::MAHAYANA
+            || (player->realm == RealmLevel::MAHAYANA && quest_story_completed(player))) {
             int r = static_cast<int>(player->realm);
             player->realm = static_cast<RealmLevel>(r + 1);
             player->stage = RealmStage::EARLY;
@@ -136,7 +148,16 @@ bool player_try_breakthrough(Player* player) {
             } else {
                 // 元婴及以上：自动晋升对应地位
                 int new_rank = static_cast<int>(player->realm);
-                if (player->sect_rank < new_rank) player->sect_rank = new_rank;
+                if (player->sect_rank < new_rank) {
+                    player->sect_rank = new_rank;
+                    // 威望随地位晋升增长（第八章大殿对质需威望≥300，合体期累计可达标）
+                    static const int prestige_by_rank[] = { 0, 0, 0, 0, 50, 70, 90, 120, 150, 200 };
+                    int gain = prestige_by_rank[new_rank < 10 ? new_rank : 0];
+                    if (gain > 0) {
+                        player->prestige += gain;
+                        printf("（宗门威望 +%d，当前 %d）\n", gain, player->prestige);
+                    }
+                }
                 printf("宗门地位晋升为【%s】！\n", sect_rank_name_idx(player->sect_rank));
                 if (player->realm == RealmLevel::NASCENT_SOUL)
                     printf("依门规，你晋升为内门执事，可向长老呈报边境战事。\n");

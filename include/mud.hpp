@@ -264,6 +264,7 @@ struct Player {
 
     // ---- 主线剧情 ----
     int story_phase = 0;      // 主线《沧渊遗恨·正邪辨》推进阶段（0未开始）
+    int story_day0 = 0;       // 主线起始日锚点：序章首次触发当天的游戏日（时间线以 D+n 天推进）
     std::string title = "";   // 称号（如：和平使者）
     std::string tags = "";    // 剧情标签/线索（逗号分隔）
 

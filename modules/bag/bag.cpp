@@ -103,6 +103,12 @@ static void cmd_sell(Player* player, const std::string& args) {
 
    auto& it = player->inventory[idx - 1];
 
+// 剧情关键道具不可出售（防止主线永久卡死）
+if (it.type == ItemType::QUEST) {
+    printf("「%s」是剧情关键道具，不可出售。\n", it.name.c_str());
+    return;
+}
+
 // 药渣按策划固定 10 灵石/个回收，其余半价
 int sell_price = (it.id == 227 || it.id == 229) ? 10 : (it.value / 2);
 

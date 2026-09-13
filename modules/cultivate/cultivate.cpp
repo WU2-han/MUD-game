@@ -95,6 +95,12 @@ static void begin_combat(Player* player, NPC* target) {
     printf("输入 attack 出手 · cast <技能号> 施放 · skill 查看技能 · flee 逃跑\n\n");
 }
 
+// 供剧情模块（最终决战）切入战斗
+void combat_begin_with(Player* player, NPC* target) {
+    if (!player || !target) return;
+    begin_combat(player, target);
+}
+
 static void cmd_fight(Player* player, const std::string& args) {
     if (args.empty()) {
         printf("用法: fight <NPC名称>\n");
@@ -132,6 +138,12 @@ static void cmd_fight(Player* player, const std::string& args) {
     // 晋升考核对手（509赵青峰 / 510金丹虚影）需通过 kaohe 指令发起
     if (target->id == 509 || target->id == 510) {
         printf("%s 是晋升考核对手，请输入 kaohe 发起考核。\n", target->name.c_str());
+        return;
+    }
+
+    // 最终决战：真相大白（养成时间2）后直面墨阳子，须走决战流程
+    if (target->id == 502 && quest_duel_pending(player)) {
+        quest_start_final_duel(player);
         return;
     }
 
@@ -271,8 +283,10 @@ static void combat_run_round(Player* player, const SkillDef* skill) {
         player->in_combat = false;
         player->combat_target_id = -1;
         player->dot_remaining = 0;
+        // 最终决战的胜败结算交由剧情模块（胜利页/奶蛙对话），此处需先捕获标志
+        bool was_final_duel = (target->id == 502 && quest_duel_pending(player));
         event_emit(EventType::COMBAT_END, player, nullptr);
-        printf("===== 战斗胜利！=====\n\n");
+        if (!was_final_duel) printf("===== 战斗胜利！=====\n\n");
         return;
     }
 
@@ -312,6 +326,15 @@ static void combat_run_round(Player* player, const SkillDef* skill) {
     // ---- 失败结算 ----
     if (player->hp <= 0) {
         player->hp = 0;
+        // 最终决战战败：不走普通惩罚与回城，「拉完了」由剧情模块呈现。
+        // 注意：该回调内可能已释放 player（重来一世读档），此后绝不可再访问。
+        if (target->id == 502 && quest_duel_pending(player)) {
+            player->in_combat = false;
+            player->combat_target_id = -1;
+            player->dot_remaining = 0;
+            event_emit(EventType::COMBAT_END, player, nullptr);
+            return;
+        }
         printf("\n你被 %s 击败了...\n", target->name.c_str());
         printf("你昏迷了过去，醒来时发现自己损失了一些修为和灵石。\n");
         player->exp = std::max(0, player->exp - player->exp / 10);
@@ -474,14 +497,21 @@ static void cmd_monthly(Player* player, const std::string& args) {
 static void promotion_win(Player* player, int npc_id) {
     if (npc_id == 509 && player->sect_rank == 1) {
         player->sect_rank = 2;
+        player->prestige += 30;   // 威望随地位晋升增长（第八章需≥300）
         printf("\n★★ 赵青峰收剑而立，目露赞许：「不错，你有资格入我内门！」 ★★\n");
-        printf("你晋升为【内门弟子】！解锁内门权限，月例提升至 1000 灵石。\n\n");
+        printf("你晋升为【内门弟子】！解锁内门权限，月例提升至 1000 灵石。\n");
+        printf("（宗门威望 +30，当前 %d）\n\n", player->prestige);
         player_recalc_stats(player);
     } else if (npc_id == 510 && player->sect_rank == 2) {
         player->sect_rank = 3;
+        player->prestige += 40;
         printf("\n★★ 三大长老相视颔首，宣布你通过亲传会审！ ★★\n");
-        printf("宗主凌沧渊缓步现身，目光威严而温和：「好孩子，从今日起，你便是我的关门弟子。」\n");
-        printf("你晋升为【亲传弟子】！从此可在宗门诸位口中听闻更多宗门秘辛。\n\n");
+        printf("宗主凌沧渊远远看了你一眼，微微颔首，目光似有深意——\n");
+        printf("你想起殿中低语的规矩：晋升亲传，还需亲自面见宗主，行拜师之礼。\n");
+        printf("你晋升为【亲传弟子】！从此可在宗门诸位口中听闻更多宗门秘辛。\n");
+        printf("（宗门威望 +40，当前 %d）\n\n", player->prestige);
+        printf("【任务引导】主线剧情已开启！先拜师——前往宗主书房，输入 story 触发拜师剧情。\n");
+        printf("（输入 guide 可查看路线与指引；到达书房后输入 story 即可。）\n\n");
         player_recalc_stats(player);
     }
 }

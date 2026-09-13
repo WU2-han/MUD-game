@@ -13,6 +13,7 @@ extern Module quest_module;
 // ===== 游戏全局状态 =====
 static Player* g_player = nullptr;
 static bool g_running = true;
+static bool g_restart = false;   // 剧情强制结束后返回主菜单（从头开始）
 
 // 前向声明
 void cmd_register(const std::string& name, const std::vector<std::string>& aliases,
@@ -21,6 +22,30 @@ void cmd_register(const std::string& name, const std::vector<std::string>& alias
 void cmd_show_all(Player* player);
 void cmd_execute(Player* player, const std::string& input);
 
+// ===== 引擎层接口（供剧情模块调用）=====
+
+// 「重来一世」：读取当前玩家最新存档，替换当前玩家
+Player* engine_reload_latest_save(Player* old) {
+    if (!old) return nullptr;
+    std::string path = std::string(save_get_dir()) + "/" + old->name + ".sav";
+    std::ifstream fp(path);
+    if (!fp.good()) return nullptr;
+    fp.close();
+
+    Player* np = load_player(old->name);
+    if (!np) return nullptr;
+
+    if (old) player_destroy(old);
+    g_player = np;
+    return np;
+}
+
+// 游戏结束，返回主菜单从头开始
+void engine_restart_to_menu() {
+    g_running = false;
+    g_restart = true;
+}
+
 // ===== 内置命令实现 =====
 
 static void cmd_help(Player* player, const std::string& args) {
@@ -28,7 +53,7 @@ static void cmd_help(Player* player, const std::string& args) {
     cmd_show_all(player);
 }
 
-// 各房间可执行的主要动作提示（仅功能性指令，不剧透剧情）
+// 各房间可执行的主要动作提示（仅功能性指令，不剧透剧情；主线剧情提示见 quest_story_room_hint）
 static const char* room_action_hints(int room_id) {
     switch (room_id) {
         case 1: return "修炼(train) 休息(rest) 睡觉(sleep) 回家(home)";
@@ -41,8 +66,6 @@ static const char* room_action_hints(int room_id) {
         case 8: return "月例(monthly)";
         case 9: case 10: case 11: case 12:
         case 18: case 20: case 22: return "战斗(fight)";
-        case 13: case 14: case 15: case 16: case 17:
-        case 19: case 21: case 23: case 24: return "剧情(story)";
         default: return nullptr;
     }
 }
@@ -129,6 +152,13 @@ static void cmd_look(Player* player, const std::string& args) {
     if (hints) {
         hr("├", "┤", W + 2);
         field("你在此可: ", hints);
+    }
+
+    // 主线剧情触发提示（剧情地点 / 最终决战地点）
+    const char* shint = quest_story_room_hint(player);
+    if (shint) {
+        hr("├", "┤", W + 2);
+        field("主线剧情: ", shint);
     }
 
     hr("└", "┘", W + 2);
@@ -425,8 +455,10 @@ static const std::vector<const char*> g_tut_blocks[] = {
     },
     // [8] 主线剧情
     {
-        "奶蛙（声调骤然低沉，氛围感拉满）：「story随时阅览主线《沧渊遗恨·正邪辨》进度与前置条件。去往何处、需要何物、还差多少尽数写明。条件达成，再次输入story即可推动故事走向。」",
-        "奶蛙：「主线剧情，待你成为亲传弟子方才开启。前路既定：苦修修为 → 通过考核 → 晋升亲传。」",
+        "奶蛙（声调骤然低沉，氛围感拉满）：「guide任务引导——随时查看主线《沧渊遗恨·正邪辨》的当前目标：下一步去哪、路线怎么走、还差什么条件、整体时间线到哪一步，一目了然。」",
+        "奶蛙：「story在剧情地点输入即可触发剧情——剧情以分段文本呈现，一段一段阅读、回车继续；最终决战则在广场输入 决战 亲自了断。」",
+        "奶蛙：「主线剧情，待你成为亲传弟子方才开启。故事始于拜师：晋升亲传后，先去宗主书房，输入 story 拜师！」",
+        "奶蛙：「剧情推进期间无法自由活动，只能跟随引导前行；养成时间则可自由修炼。记住：最终决战之前，务必 save 存档！」",
         "小贴士: 推进剧情需要四处奔走：宗主书房、祖师堂、边境大营……home传送至大殿附近再行进，省去跋涉劳苦。十三点钟声敲响，属于你的宿命篇章就此开启。",
     },
     // [9] 地图探索
@@ -630,6 +662,13 @@ static void cmd_drop(Player* player, const std::string& args) {
         printf("无效的背包编号。\n");
         return;
     }
+
+    // 剧情关键道具不可丢弃（防止主线永久卡死）
+    if (player->inventory[idx - 1].type == ItemType::QUEST) {
+        printf("「%s」是剧情关键道具，不可丢弃。\n", player->inventory[idx - 1].name.c_str());
+        return;
+    }
+
     Room* room = room_get(player->current_room_id);
     if (room) {
         room_add_item(player->current_room_id, player->inventory[idx - 1].id);
@@ -998,82 +1037,93 @@ int main() {
     // 初始化模块
     module_init_all();
 
-    // 主菜单
-    printf("欢迎来到修仙世界！\n");
-    printf("  [1] 创建角色\n");
-    printf("  [2] 读取存档\n");
-    printf("  [3] 查看存档列表\n");
-    printf("  [4] 退出\n");
+    // 主循环：支持剧情强制结束（嘉豪结局）后返回主菜单从头开始
+    while (true) {
+        g_restart = false;
 
-    int choice = 0;
-    while (choice < 1 || choice > 4) {
-        printf("请选择: ");
-        if (scanf("%d", &choice) != 1) {
-            while (getchar() != '\n');
-            choice = 0;
+        // 主菜单
+        printf("欢迎来到修仙世界！\n");
+        printf("  [1] 创建角色\n");
+        printf("  [2] 读取存档\n");
+        printf("  [3] 查看存档列表\n");
+        printf("  [4] 退出\n");
+
+        int choice = 0;
+        while (choice < 1 || choice > 4) {
+            printf("请选择: ");
+            if (scanf("%d", &choice) != 1) {
+                while (getchar() != '\n');
+                choice = 0;
+            }
+            getchar(); // 吃掉换行
         }
-        getchar(); // 吃掉换行
+
+        bool entered = false;
+        bool is_new_game = false;
+
+        switch (choice) {
+        case 1:
+            g_player = create_character();
+            if (g_player) { entered = true; is_new_game = true; }
+            break;
+        case 2: {
+            std::string name;
+            printf("请输入道号: ");
+            std::getline(std::cin, name);
+            cmd_load(&g_player, name);
+            if (g_player) entered = true;
+            break;
+        }
+        case 3:
+            save_list_players();
+            printf("按回车键返回主菜单...");
+            getchar();
+            continue;
+        case 4:
+            printf("再会！\n");
+            break;
+        }
+        if (choice == 4) break;
+        if (!entered) {
+            printf("创建/读取角色失败，程序退出。\n");
+            break;
+        }
+
+        // 进入游戏世界
+        printf("\n你睁开双眼，发现自己身处一个陌生的世界...\n");
+        {
+            Room* start_room = room_get(g_player->current_room_id);
+            if (start_room) {
+                printf("当前所在: %s\n", start_room->name.c_str());
+            }
+        }
+
+        // 输入约定（QIGAI 意见6）：只有出现「>」符号时才可直接输入指令
+        printf("【操作提示】只有屏幕出现「>」符号时，才能直接输入指令；其余情况请按回车键继续。\n\n");
+
+        // 新角色首次进入：自动播放新手指导开场（之后 talk 奶蛙 只显示菜单）
+        if (is_new_game) run_tutorial(g_player);
+
+        // 主循环
+        game_loop();
+
+        // 退出游戏循环：剧情强制结束（从头开始）则不询问保存
+        if (g_player) {
+            if (g_restart) {
+                player_destroy(g_player);
+                g_player = nullptr;
+            } else {
+                printf("是否保存游戏？(y/n): ");
+                char c = (char)getchar();
+                if (c == 'y' || c == 'Y') save_player(g_player);
+                player_destroy(g_player);
+                g_player = nullptr;
+            }
+        }
+        if (!g_restart) break;
     }
 
-    bool is_new_game = false;
-
-    switch (choice) {
-    case 1:
-        g_player = create_character();
-        if (!g_player) {
-            printf("创建角色失败，程序退出。\n");
-            goto cleanup;
-        }
-        is_new_game = true;
-        break;
-    case 2: {
-        std::string name;
-        printf("请输入道号: ");
-        std::getline(std::cin, name);
-        cmd_load(&g_player, name);
-        if (!g_player) {
-            printf("登录失败，程序退出。\n");
-            goto cleanup;
-        }
-        break;
-    }
-    case 3:
-        save_list_players();
-        printf("按回车键退出...");
-        getchar();
-        goto cleanup;
-    case 4:
-        printf("再会！\n");
-        goto cleanup;
-    }
-
-    // 进入游戏世界
-    printf("\n你睁开双眼，发现自己身处一个陌生的世界...\n");
-    {
-        Room* start_room = room_get(g_player->current_room_id);
-        if (start_room) {
-            printf("当前所在: %s\n", start_room->name.c_str());
-        }
-    }
-
-    // 输入约定（QIGAI 意见6）：只有出现「>」符号时才可直接输入指令
-    printf("【操作提示】只有屏幕出现「>」符号时，才能直接输入指令；其余情况请按回车键继续。\n\n");
-
-    // 新角色首次进入：自动播放新手指导开场（之后 talk 奶蛙 只显示菜单）
-    if (is_new_game) run_tutorial(g_player);
-
-    // 主循环
-    game_loop();
-
-cleanup:
     // 清理
-    if (g_player) {
-        printf("是否保存游戏？(y/n): ");
-        char c = (char)getchar();
-        if (c == 'y' || c == 'Y') save_player(g_player);
-        player_destroy(g_player);
-    }
-
     module_cleanup_all();
     event_cleanup();
 

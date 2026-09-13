@@ -98,4 +98,19 @@ const char* save_get_dir();
 bool save_world_state();
 bool load_world_state();
 
+// ---- 战斗（cultivate.cpp 提供）----
+void combat_begin_with(Player* player, NPC* target);
+
+// ---- 剧情模块（quest.cpp 提供）----
+bool quest_story_locked(const Player* p);        // 主线走剧情阶段（禁止自由活动）
+bool quest_story_completed(const Player* p);     // 主线剧情已全部完成（解锁飞升）
+bool quest_duel_pending(const Player* p);        // 最终决战待命（养成时间2）
+const char* quest_story_lock_target(const Player* p); // 剧情锁定提示中的目标地点名
+const char* quest_story_room_hint(const Player* p);   // 当前房间的剧情触发提示（look 用）
+void quest_start_final_duel(Player* player);     // 发起最终决战（含存档提示/境界校验/确认）
+
+// ---- 引擎层（main.cpp 提供）----
+Player* engine_reload_latest_save(Player* old);  // 「重来一世」：读取当前玩家最新存档替换之
+void engine_restart_to_menu();                   // 游戏结束，返回主菜单从头开始
+
 #endif // MUD_API_HPP
